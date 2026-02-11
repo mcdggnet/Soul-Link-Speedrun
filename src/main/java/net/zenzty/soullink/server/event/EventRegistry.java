@@ -64,7 +64,17 @@ public class EventRegistry {
         registerConnectionEvents();
         registerTickEvents();
         registerEntityEvents();
+        registerUseEvents();
         CompassTrackingHandler.register();
+    }
+
+    /**
+     * Block/item use events. Delayed sync (UseBlockCallback/UseItemCallback + scheduleDelayed) was
+     * causing "invalid player data" when the task ran during disconnect/save. Disabled; block
+     * placement sync is best fixed by hooking the exact place vanilla consumes the item.
+     */
+    private static void registerUseEvents() {
+        // No delayed sync - causes invalid player data when player disconnects or saves.
     }
 
     /**

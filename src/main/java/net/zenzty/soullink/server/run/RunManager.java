@@ -181,6 +181,11 @@ public class RunManager {
         // Reset shared stats
         SharedStatsHandler.reset();
 
+        // Reset shared inventory when synced inventory mode is enabled
+        if (Settings.getInstance().isSyncedInventory()) {
+            net.zenzty.soullink.server.inventory.SharedInventoryHandler.reset();
+        }
+
         // Reset End initialization flag
         endInitialized = false;
 
@@ -421,6 +426,10 @@ public class RunManager {
                 } else {
                     teleportService.teleportToSpawn(player, overworld, spawnFinder.getSpawnPos(),
                             timerService, true);
+                    if (Settings.getInstance().isSyncedInventory()) {
+                        net.zenzty.soullink.server.inventory.SharedInventoryHandler
+                                .syncPlayerToShared(player);
+                    }
                     player.sendMessage(formatMessageWithPlayer("", player.getName().getString(),
                             " joined. Stats synced."), false);
                 }
@@ -531,6 +540,14 @@ public class RunManager {
     }
 
     // ==================== HELPER METHODS ====================
+
+    /**
+     * Checks if a player is in the active run (in a temporary world). Public for use by
+     * SharedInventoryHandler and other handlers.
+     */
+    public boolean isPlayerInRun(ServerPlayerEntity player) {
+        return isInRun(player);
+    }
 
     /**
      * Checks if a player is in the active run (in a temporary world).
