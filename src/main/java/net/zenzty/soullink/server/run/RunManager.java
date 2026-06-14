@@ -4,29 +4,32 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.entity.boss.ServerBossBar;
-import net.minecraft.entity.boss.dragon.EnderDragonFight;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.network.packet.s2c.play.SubtitleS2CPacket;
-import net.minecraft.network.packet.s2c.play.TitleFadeS2CPacket;
-import net.minecraft.network.packet.s2c.play.TitleS2CPacket;
-import net.minecraft.registry.RegistryKey;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitlesAnimationPacket;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.village.raid.Raid;
-import net.minecraft.village.raid.RaidManager;
-import net.minecraft.world.GameMode;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerBossEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.clock.ServerClockManager;
+import net.minecraft.world.clock.WorldClock;
+import net.minecraft.world.effect.MobEffectInstance;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.raid.Raid;
+import net.minecraft.world.entity.raid.Raids;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.dimension.end.EnderDragonFight;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.mixin.server.EnderDragonFightAccessor;
 import net.zenzty.soullink.mixin.server.RaidAccessor;
@@ -63,40 +66,40 @@ public class RunManager {
     /**
      * Creates the [SoulLink] prefix with dark grey brackets and light red text.
      */
-    public static Text getPrefix() {
-        return Text.empty().append(Text.literal("[").formatted(Formatting.DARK_GRAY))
-                .append(Text.literal("SoulLink").formatted(Formatting.RED))
-                .append(Text.literal("] ").formatted(Formatting.DARK_GRAY));
+    public static Component getPrefix() {
+        return Component.empty().append(Component.literal("[").withStyle(ChatFormatting.DARK_GRAY))
+                .append(Component.literal("SoulLink").withStyle(ChatFormatting.RED))
+                .append(Component.literal("] ").withStyle(ChatFormatting.DARK_GRAY));
     }
 
     /**
      * Creates a formatted message with the [SoulLink] prefix.
      */
-    public static Text formatMessage(String message) {
-        return Text.empty().append(getPrefix())
-                .append(Text.literal(message).formatted(Formatting.GRAY));
+    public static Component formatMessage(String message) {
+        return Component.empty().append(getPrefix())
+                .append(Component.literal(message).withStyle(ChatFormatting.GRAY));
     }
 
     /**
      * Creates a formatted message with a player name highlighted.
      */
-    public static Text formatMessageWithPlayer(String beforePlayer, String playerName,
+    public static Component formatMessageWithPlayer(String beforePlayer, String playerName,
             String afterPlayer) {
-        return Text.empty().append(getPrefix())
-                .append(Text.literal(beforePlayer).formatted(Formatting.GRAY))
-                .append(Text.literal(playerName).formatted(Formatting.WHITE))
-                .append(Text.literal(afterPlayer).formatted(Formatting.GRAY));
+        return Component.empty().append(getPrefix())
+                .append(Component.literal(beforePlayer).withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(playerName).withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(afterPlayer).withStyle(ChatFormatting.GRAY));
     }
 
     /**
      * Creates a clickable text with underline and hover text.
      */
-    public static Text formatClickable(String text, String command, String hoverText) {
-        return Text.literal(text)
-                .setStyle(Style.EMPTY.withColor(Formatting.GREEN).withUnderline(true)
+    public static Component formatClickable(String text, String command, String hoverText) {
+        return Component.literal(text)
+                .setStyle(Style.EMPTY.withColor(ChatFormatting.GREEN).withUnderlined(true)
                         .withClickEvent(new ClickEvent.RunCommand(command))
                         .withHoverEvent(new HoverEvent.ShowText(
-                                Text.literal(hoverText).formatted(Formatting.GRAY))));
+                                Component.literal(hoverText).withStyle(ChatFormatting.GRAY))));
     }
 
     // ==================== LIFECYCLE ====================
@@ -138,8 +141,8 @@ public class RunManager {
     /**
      * Gets the ServerWorld for a player.
      */
-    public static ServerWorld getPlayerWorld(ServerPlayerEntity player) {
-        return player.getEntityWorld();
+    public static ServerLevel getPlayerWorld(ServerPlayer player) {
+        return player.level();
     }
 
     // ==================== RUN LIFECYCLE ====================
@@ -170,7 +173,7 @@ public class RunManager {
         clearRaidBossbars();
 
         // Broadcast starting message
-        server.getPlayerManager().broadcast(formatMessage("Generating new world..."), false);
+        server.getPlayerList().broadcastSystemMessage(formatMessage("Generating new world..."), false);
 
         // Save old worlds for later deletion
         worldService.saveCurrentWorldsAsOld();
@@ -197,8 +200,8 @@ public class RunManager {
         gameState = RunState.GENERATING_WORLD;
 
         // Put all players in spectator mode
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            player.changeGameMode(GameMode.SPECTATOR);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            player.setGameMode(GameType.SPECTATOR);
         }
 
         SoulLink.LOGGER.info("World created with seed: {}, now searching for spawn...", seed);
@@ -210,7 +213,7 @@ public class RunManager {
     public void tick() {
         // Handle incremental world generation
         if (gameState == RunState.GENERATING_WORLD) {
-            ServerWorld overworld = worldService.getOverworld();
+            ServerLevel overworld = worldService.getOverworld();
             if (overworld == null) {
                 SoulLink.LOGGER.error("No overworld handle during generation!");
                 gameState = RunState.IDLE;
@@ -228,9 +231,16 @@ public class RunManager {
         }
 
         // Manually advance time in temporary overworld
-        ServerWorld tempOverworld = worldService.getOverworld();
+        ServerLevel tempOverworld = worldService.getOverworld();
         if (tempOverworld != null) {
-            tempOverworld.setTimeOfDay(tempOverworld.getTimeOfDay() + 1);
+            // 1. Get clock manager for the server
+            ServerClockManager clockManager = tempOverworld.getServer().clockManager();
+
+            // 2. Get clock for world
+            Holder<WorldClock> clock = tempOverworld.dimensionTypeRegistration().value().defaultClock().orElseThrow();
+
+            // 3. Add 1 tick to the clock
+            clockManager.addTicks(clock, 1);
         }
 
         // Handle timer (includes waiting for input)
@@ -242,19 +252,19 @@ public class RunManager {
      * who just switched compass target keep the "Now tracking: X" message visible for a few
      * seconds.
      */
-    private boolean shouldSkipTimerActionBarFor(ServerPlayerEntity p) {
+    private boolean shouldSkipTimerActionBarFor(ServerPlayer p) {
         if (!Settings.getInstance().isManhuntMode())
             return false;
         if (!ManhuntManager.getInstance().isHunter(p))
             return false;
-        return CompassTrackingHandler.shouldSuppressTimerActionBar(p.getUuid(), server.getTicks());
+        return CompassTrackingHandler.shouldSuppressTimerActionBar(p.getUUID(), server.getTickCount());
     }
 
     /**
      * Transitions from GENERATING_WORLD to RUNNING.
      */
     private void transitionToRunning() {
-        ServerWorld overworld = worldService.getOverworld();
+        ServerLevel overworld = worldService.getOverworld();
         BlockPos spawnPos = spawnFinder.getSpawnPos();
 
         if (overworld == null)
@@ -275,22 +285,22 @@ public class RunManager {
         ManhuntManager manhuntManager = ManhuntManager.getInstance();
 
         if (manhunt) {
-            for (ServerWorld world : server.getWorlds()) {
+            for (ServerLevel world : server.getAllLevels()) {
                 try {
-                    server.getCommandManager().getDispatcher().execute(
-                            "execute in " + world.getRegistryKey().getValue()
+                    server.getCommands().getDispatcher().execute(
+                            "execute in " + world.dimension().identifier()
                                     + " run gamerule locator_bar false",
-                            server.getCommandSource().withSilent());
+                            server.createCommandSourceStack().withSuppressedOutput());
                 } catch (Exception e) {
                     SoulLink.LOGGER.warn("Could not disable locator_bar in {}: {}",
-                            world.getRegistryKey().getValue(), e.getMessage());
+                            world.dimension().identifier(), e.getMessage());
                 }
             }
             manhuntManager.createTeams(server);
             manhuntManager.assignPlayersToTeams(server);
         }
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             boolean syncToShared = !manhunt || manhuntManager.isSpeedrunner(player);
             teleportService.teleportToSpawn(player, overworld, spawnPos, timerService,
                     syncToShared);
@@ -301,7 +311,7 @@ public class RunManager {
         if (manhunt) {
             CompassTrackingHandler.reset();
             for (UUID hunterId : manhuntManager.getHunters()) {
-                ServerPlayerEntity hunter = server.getPlayerManager().getPlayer(hunterId);
+                ServerPlayer hunter = server.getPlayerList().getPlayer(hunterId);
                 if (hunter != null) {
                     CompassTrackingHandler.giveTrackingCompass(hunter);
                 }
@@ -309,7 +319,7 @@ public class RunManager {
             applyHeadStartEffects(manhuntManager);
         }
 
-        server.getPlayerManager().broadcast(formatMessage("World ready! Good luck!"), false);
+        server.getPlayerList().broadcastSystemMessage(formatMessage("World ready! Good luck!"), false);
 
         SoulLink.LOGGER.info("World generation complete, run started");
     }
@@ -323,14 +333,14 @@ public class RunManager {
     private void applyHeadStartEffects(ManhuntManager manhuntManager) {
         int durationTicks = HEAD_START_SECONDS * 20;
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (manhuntManager.isHunter(player)) {
-                player.addStatusEffect(new StatusEffectInstance(StatusEffects.BLINDNESS,
+                player.addEffect(new MobEffectInstance(MobEffects.BLINDNESS,
                         durationTicks, 0, false, false, true));
-                player.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS,
+                player.addEffect(new MobEffectInstance(MobEffects.SLOWNESS,
                         durationTicks, 255, false, false, true));
             } else if (manhuntManager.isSpeedrunner(player)) {
-                player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, durationTicks,
+                player.addEffect(new MobEffectInstance(MobEffects.SPEED, durationTicks,
                         0, false, false, true));
             }
         }
@@ -342,15 +352,15 @@ public class RunManager {
             EventRegistry.scheduleDelayed(delayTicks, () -> {
                 if (gameState != RunState.RUNNING)
                     return;
-                for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                     if (manhuntManager.isHunter(player)) {
-                        player.networkHandler.sendPacket(new TitleFadeS2CPacket(0, 25, 0));
-                        Formatting color = secondsRemaining <= 5 ? Formatting.RED : Formatting.GOLD;
-                        player.networkHandler.sendPacket(
-                                new TitleS2CPacket(Text.literal(String.valueOf(secondsRemaining))
-                                        .formatted(color, Formatting.BOLD)));
-                        player.networkHandler.sendPacket(new SubtitleS2CPacket(
-                                Text.literal("Catch the Runners!").formatted(Formatting.GRAY)));
+                        player.connection.send(new ClientboundSetTitlesAnimationPacket(0, 25, 0));
+                        ChatFormatting color = secondsRemaining <= 5 ? ChatFormatting.RED : ChatFormatting.GOLD;
+                        player.connection.send(
+                                new ClientboundSetTitleTextPacket(Component.literal(String.valueOf(secondsRemaining))
+                                        .withStyle(color, ChatFormatting.BOLD)));
+                        player.connection.send(new ClientboundSetSubtitleTextPacket(
+                                Component.literal("Catch the Runners!").withStyle(ChatFormatting.GRAY)));
                     }
                 }
             });
@@ -359,16 +369,16 @@ public class RunManager {
         EventRegistry.scheduleDelayed(HEAD_START_SECONDS * 20, () -> {
             if (gameState != RunState.RUNNING)
                 return;
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (manhuntManager.isSpeedrunner(player)) {
-                    player.networkHandler.sendPacket(new TitleFadeS2CPacket(10, 40, 20));
-                    player.networkHandler
-                            .sendPacket(new TitleS2CPacket(Text.literal("HUNTERS RELEASED!")
-                                    .formatted(Formatting.RED, Formatting.BOLD)));
+                    player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 40, 20));
+                    player.connection
+                            .send(new ClientboundSetTitleTextPacket(Component.literal("HUNTERS RELEASED!")
+                                    .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
                 } else if (manhuntManager.isHunter(player)) {
-                    player.networkHandler.sendPacket(new TitleFadeS2CPacket(10, 40, 20));
-                    player.networkHandler.sendPacket(new TitleS2CPacket(
-                            Text.literal("GO!").formatted(Formatting.GREEN, Formatting.BOLD)));
+                    player.connection.send(new ClientboundSetTitlesAnimationPacket(10, 40, 20));
+                    player.connection.send(new ClientboundSetTitleTextPacket(
+                            Component.literal("GO!").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)));
                 }
             }
         });
@@ -381,12 +391,12 @@ public class RunManager {
      */
     public void deleteWorlds(boolean teleportPlayers) {
         if (teleportPlayers) {
-            List<ServerPlayerEntity> allPlayers =
-                    new ArrayList<>(server.getPlayerManager().getPlayerList());
+            List<ServerPlayer> allPlayers =
+                    new ArrayList<>(server.getPlayerList().getPlayers());
 
-            for (ServerPlayerEntity player : allPlayers) {
-                ServerWorld playerWorld = getPlayerWorld(player);
-                if (playerWorld != null && isTemporaryWorld(playerWorld.getRegistryKey())) {
+            for (ServerPlayer player : allPlayers) {
+                ServerLevel playerWorld = getPlayerWorld(player);
+                if (playerWorld != null && isTemporaryWorld(playerWorld.dimension())) {
                     teleportService.teleportToVanillaSpawn(player);
                 }
             }
@@ -398,31 +408,30 @@ public class RunManager {
     /**
      * Teleports a late-joining player to the current run.
      */
-    public void teleportPlayerToRun(ServerPlayerEntity player) {
+    public void teleportPlayerToRun(ServerPlayer player) {
         if (gameState == RunState.GENERATING_WORLD) {
-            player.changeGameMode(GameMode.SPECTATOR);
-            player.getInventory().clear();
-            player.clearStatusEffects();
-            player.sendMessage(formatMessage("Finding spawn point, please wait..."), false);
+            player.setGameMode(GameType.SPECTATOR);
+            player.getInventory().clearContent();
+            player.removeAllEffects();
+            player.sendSystemMessage(formatMessage("Finding spawn point, please wait..."));
             return;
         }
 
         if (gameState == RunState.RUNNING && spawnFinder.hasFoundSpawn()) {
-            ServerWorld overworld = worldService.getOverworld();
+            ServerLevel overworld = worldService.getOverworld();
             if (overworld != null) {
                 if (Settings.getInstance().isManhuntMode()) {
-                    player.changeGameMode(GameMode.SPECTATOR);
-                    player.getInventory().clear();
-                    player.clearStatusEffects();
+                    player.setGameMode(GameType.SPECTATOR);
+                    player.getInventory().clearContent();
+                    player.removeAllEffects();
                     BlockPos spawnPos = spawnFinder.getSpawnPos();
                     if (spawnPos != null) {
-                        player.teleport(overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 10,
+                        player.teleportTo(overworld, spawnPos.getX() + 0.5, spawnPos.getY() + 10,
                                 spawnPos.getZ() + 0.5, Set.of(), 0, 0, true);
                     }
-                    player.sendMessage(
+                    player.sendSystemMessage(
                             formatMessage(
-                                    "A run is in progress. You are spectating until it ends."),
-                            false);
+                                    "A run is in progress. You are spectating until it ends."));
                 } else {
                     teleportService.teleportToSpawn(player, overworld, spawnFinder.getSpawnPos(),
                             timerService, true);
@@ -430,8 +439,8 @@ public class RunManager {
                         net.zenzty.soullink.server.inventory.SharedInventoryHandler
                                 .syncPlayerToShared(player);
                     }
-                    player.sendMessage(formatMessageWithPlayer("", player.getName().getString(),
-                            " joined. Stats synced."), false);
+                    player.sendSystemMessage(formatMessageWithPlayer("", player.getName().getString(),
+                            " joined. Stats synced."));
                 }
             }
         }
@@ -457,36 +466,36 @@ public class RunManager {
 
         String finalTime = timerService.getFormattedTime();
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (isInRun(player)) {
-                player.changeGameMode(GameMode.SPECTATOR);
-                player.getInventory().clear();
+                player.setGameMode(GameType.SPECTATOR);
+                player.getInventory().clearContent();
 
-                ServerWorld world = getPlayerWorld(player);
+                ServerLevel world = getPlayerWorld(player);
                 if (world != null) {
                     world.playSound(null, player.getX(), player.getY(), player.getZ(),
-                            SoundEvents.ENTITY_WITHER_DEATH, SoundCategory.PLAYERS, 0.5f, 0.8f);
+                            SoundEvents.WITHER_DEATH, SoundSource.PLAYERS, 0.5f, 0.8f);
                 }
 
-                player.networkHandler.sendPacket(new TitleS2CPacket(
-                        Text.literal("GAME OVER").formatted(Formatting.RED, Formatting.BOLD)));
+                player.connection.send(new ClientboundSetTitleTextPacket(
+                        Component.literal("GAME OVER").withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
 
-                player.networkHandler.sendPacket(
-                        new SubtitleS2CPacket(Text.literal(finalTime).formatted(Formatting.WHITE)));
+                player.connection.send(
+                        new ClientboundSetSubtitleTextPacket(Component.literal(finalTime).withStyle(ChatFormatting.WHITE)));
             }
         }
 
-        Text restartMessage = Text.empty().append(getPrefix())
-                .append(Text.literal("All players are dead. Click ").formatted(Formatting.GRAY))
-                .append(Text.literal("here").setStyle(Style.EMPTY.withColor(Formatting.BLUE)
-                        .withUnderline(true).withClickEvent(new ClickEvent.RunCommand("/start"))
+        Component restartMessage = Component.empty().append(getPrefix())
+                .append(Component.literal("All players are dead. Click ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("here").setStyle(Style.EMPTY.withColor(ChatFormatting.BLUE)
+                        .withUnderlined(true).withClickEvent(new ClickEvent.RunCommand("/start"))
                         .withHoverEvent(new HoverEvent.ShowText(
-                                Text.literal("Start a new attempt").formatted(Formatting.GRAY)))))
-                .append(Text.literal(" or use ").formatted(Formatting.GRAY))
-                .append(Text.literal("/start").formatted(Formatting.GOLD))
-                .append(Text.literal(" to start a new attempt.").formatted(Formatting.GRAY));
+                                Component.literal("Start a new attempt").withStyle(ChatFormatting.GRAY)))))
+                .append(Component.literal(" or use ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("/start").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" to start a new attempt.").withStyle(ChatFormatting.GRAY));
 
-        server.getPlayerManager().broadcast(restartMessage, false);
+        server.getPlayerList().broadcastSystemMessage(restartMessage, false);
     }
 
     /**
@@ -507,36 +516,36 @@ public class RunManager {
 
         String finalTime = timerService.getFormattedTime();
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-            ServerWorld world = getPlayerWorld(player);
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            ServerLevel world = getPlayerWorld(player);
             if (world != null) {
                 world.playSound(null, player.getX(), player.getY(), player.getZ(),
-                        SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundCategory.PLAYERS, 1.0f, 1.0f);
+                        SoundEvents.UI_TOAST_CHALLENGE_COMPLETE, SoundSource.PLAYERS, 1.0f, 1.0f);
             }
 
-            player.networkHandler.sendPacket(new TitleS2CPacket(
-                    Text.literal("VICTORY").formatted(Formatting.GOLD, Formatting.BOLD)));
+            player.connection.send(new ClientboundSetTitleTextPacket(
+                    Component.literal("VICTORY").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD)));
 
-            player.networkHandler.sendPacket(
-                    new SubtitleS2CPacket(Text.literal(finalTime).formatted(Formatting.WHITE)));
+            player.connection.send(
+                    new ClientboundSetSubtitleTextPacket(Component.literal(finalTime).withStyle(ChatFormatting.WHITE)));
         }
 
-        Text victoryMessage = Text.empty().append(getPrefix())
-                .append(Text.literal("Dragon defeated in ").formatted(Formatting.GRAY))
-                .append(Text.literal(finalTime).formatted(Formatting.WHITE));
-        server.getPlayerManager().broadcast(victoryMessage, false);
+        Component victoryMessage = Component.empty().append(getPrefix())
+                .append(Component.literal("Dragon defeated in ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(finalTime).withStyle(ChatFormatting.WHITE));
+        server.getPlayerList().broadcastSystemMessage(victoryMessage, false);
 
-        Text clickableHere = Text.literal("here").setStyle(Style.EMPTY.withColor(Formatting.AQUA)
-                .withUnderline(true).withClickEvent(new ClickEvent.RunCommand("/start"))
+        Component clickableHere = Component.literal("here").setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
+                .withUnderlined(true).withClickEvent(new ClickEvent.RunCommand("/start"))
                 .withHoverEvent(new HoverEvent.ShowText(
-                        Text.literal("Click to start a new run!").formatted(Formatting.GRAY))));
+                        Component.literal("Click to start a new run!").withStyle(ChatFormatting.GRAY))));
 
-        Text restartMessage = Text.empty().append(getPrefix())
-                .append(Text.literal("Victory! Click ").formatted(Formatting.GRAY))
-                .append(clickableHere).append(Text.literal(" or use ").formatted(Formatting.GRAY))
-                .append(Text.literal("/start").formatted(Formatting.GOLD))
-                .append(Text.literal(" to challenge again.").formatted(Formatting.GRAY));
-        server.getPlayerManager().broadcast(restartMessage, false);
+        Component restartMessage = Component.empty().append(getPrefix())
+                .append(Component.literal("Victory! Click ").withStyle(ChatFormatting.GRAY))
+                .append(clickableHere).append(Component.literal(" or use ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("/start").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" to challenge again.").withStyle(ChatFormatting.GRAY));
+        server.getPlayerList().broadcastSystemMessage(restartMessage, false);
     }
 
     // ==================== HELPER METHODS ====================
@@ -545,16 +554,16 @@ public class RunManager {
      * Checks if a player is in the active run (in a temporary world). Public for use by
      * SharedInventoryHandler and other handlers.
      */
-    public boolean isPlayerInRun(ServerPlayerEntity player) {
+    public boolean isPlayerInRun(ServerPlayer player) {
         return isInRun(player);
     }
 
     /**
      * Checks if a player is in the active run (in a temporary world).
      */
-    private boolean isInRun(ServerPlayerEntity player) {
-        ServerWorld world = getPlayerWorld(player);
-        return world != null && isTemporaryWorld(world.getRegistryKey());
+    private boolean isInRun(ServerPlayer player) {
+        ServerLevel world = getPlayerWorld(player);
+        return world != null && isTemporaryWorld(world.dimension());
     }
 
     /**
@@ -563,15 +572,15 @@ public class RunManager {
      */
     private void clearEnderDragonBossbar() {
         // Check all worlds for an active dragon fight and clear its bossbar
-        for (ServerWorld world : server.getWorlds()) {
-            EnderDragonFight fight = world.getEnderDragonFight();
+        for (ServerLevel world : server.getAllLevels()) {
+            EnderDragonFight fight = world.getDragonFight();
             if (fight != null) {
                 try {
-                    ServerBossBar bossBar = ((EnderDragonFightAccessor) fight).getBossBar();
+                    ServerBossEvent bossBar = ((EnderDragonFightAccessor) fight).getBossBar();
                     if (bossBar != null) {
                         forceClearBossBar(bossBar);
                         SoulLink.LOGGER.debug("Cleared Ender Dragon bossbar from world: {}",
-                                world.getRegistryKey().getValue());
+                                world.dimension().identifier());
                     }
                 } catch (Exception e) {
                     SoulLink.LOGGER.warn("Failed to clear Ender Dragon bossbar: {}",
@@ -586,15 +595,15 @@ public class RunManager {
      * the removal packet is sent to all clients, even if the players were already removed from the
      * bossbar's internal player list (e.g., when they died).
      */
-    private void forceClearBossBar(ServerBossBar bossBar) {
+    private void forceClearBossBar(ServerBossEvent bossBar) {
         // Set invisible first to prevent the bossbar from being re-shown by ongoing game logic
         bossBar.setVisible(false);
         // Add all online players to the bossbar first to ensure they're in the player list
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             bossBar.addPlayer(player);
         }
         // Now clear - this will send removal packets to all added players
-        bossBar.clearPlayers();
+        bossBar.removeAllPlayers();
     }
 
     /**
@@ -605,8 +614,8 @@ public class RunManager {
      */
     private void clearRaidBossbars() {
         // Check all worlds for active raids and clear their bossbars
-        for (ServerWorld world : server.getWorlds()) {
-            RaidManager raidManager = world.getRaidManager();
+        for (ServerLevel world : server.getAllLevels()) {
+            Raids raidManager = world.getRaids();
             if (raidManager == null) {
                 continue;
             }
@@ -619,13 +628,13 @@ public class RunManager {
             for (Raid raid : raidsToClean) {
                 try {
                     // Invalidate the raid to stop it from ticking and re-showing the bossbar
-                    raid.invalidate();
+                    raid.stop();
 
-                    ServerBossBar bossBar = ((RaidAccessor) raid).getBar();
+                    ServerBossEvent bossBar = ((RaidAccessor) raid).getBar();
                     if (bossBar != null) {
                         forceClearBossBar(bossBar);
                         SoulLink.LOGGER.debug("Cleared raid bossbar from world: {}",
-                                world.getRegistryKey().getValue());
+                                world.dimension().identifier());
                     }
                 } catch (Exception e) {
                     SoulLink.LOGGER.warn("Failed to clear raid bossbar: {}", e.getMessage());
@@ -637,7 +646,7 @@ public class RunManager {
     /**
      * Teleports a player to the vanilla overworld spawn.
      */
-    public void teleportToVanillaSpawn(ServerPlayerEntity player) {
+    public void teleportToVanillaSpawn(ServerPlayer player) {
         teleportService.teleportToVanillaSpawn(player);
     }
 
@@ -663,35 +672,35 @@ public class RunManager {
         this.endInitialized = initialized;
     }
 
-    public ServerWorld getTemporaryOverworld() {
+    public ServerLevel getTemporaryOverworld() {
         return worldService.getOverworld();
     }
 
-    public ServerWorld getTemporaryNether() {
+    public ServerLevel getTemporaryNether() {
         return worldService.getNether();
     }
 
-    public ServerWorld getTemporaryEnd() {
+    public ServerLevel getTemporaryEnd() {
         return worldService.getEnd();
     }
 
-    public RegistryKey<World> getTemporaryOverworldKey() {
+    public ResourceKey<Level> getTemporaryOverworldKey() {
         return worldService.getOverworldKey();
     }
 
-    public RegistryKey<World> getTemporaryNetherKey() {
+    public ResourceKey<Level> getTemporaryNetherKey() {
         return worldService.getNetherKey();
     }
 
-    public RegistryKey<World> getTemporaryEndKey() {
+    public ResourceKey<Level> getTemporaryEndKey() {
         return worldService.getEndKey();
     }
 
-    public boolean isTemporaryWorld(RegistryKey<World> worldKey) {
+    public boolean isTemporaryWorld(ResourceKey<Level> worldKey) {
         return worldService.isTemporaryWorld(worldKey);
     }
 
-    public ServerWorld getLinkedNetherWorld(ServerWorld fromWorld) {
+    public ServerLevel getLinkedNetherWorld(ServerLevel fromWorld) {
         return worldService.getLinkedNetherWorld(fromWorld);
     }
 

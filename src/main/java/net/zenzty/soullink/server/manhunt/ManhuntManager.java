@@ -3,12 +3,12 @@ package net.zenzty.soullink.server.manhunt;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.scoreboard.Scoreboard;
-import net.minecraft.scoreboard.Team;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.scores.PlayerTeam;
+import net.minecraft.world.scores.Scoreboard;
 import net.zenzty.soullink.SoulLink;
 
 /**
@@ -79,8 +79,8 @@ public class ManhuntManager {
     /**
      * Checks if a player is a Runner (participates in Soul Link).
      */
-    public boolean isSpeedrunner(ServerPlayerEntity player) {
-        return player != null && runners.contains(player.getUuid());
+    public boolean isSpeedrunner(ServerPlayer player) {
+        return player != null && runners.contains(player.getUUID());
     }
 
     /**
@@ -93,8 +93,8 @@ public class ManhuntManager {
     /**
      * Checks if a player is a Hunter (vanilla mechanics).
      */
-    public boolean isHunter(ServerPlayerEntity player) {
-        return player != null && hunters.contains(player.getUuid());
+    public boolean isHunter(ServerPlayer player) {
+        return player != null && hunters.contains(player.getUUID());
     }
 
     /**
@@ -143,26 +143,26 @@ public class ManhuntManager {
         Scoreboard scoreboard = server.getScoreboard();
 
         // Create or get Runners team
-        Team runnersTeam = scoreboard.getTeam(RUNNERS_TEAM);
+        PlayerTeam runnersTeam = scoreboard.getPlayerTeam(RUNNERS_TEAM);
         if (runnersTeam == null) {
-            runnersTeam = scoreboard.addTeam(RUNNERS_TEAM);
+            runnersTeam = scoreboard.addPlayerTeam(RUNNERS_TEAM);
         }
-        runnersTeam.setDisplayName(Text.literal("Runners"));
-        runnersTeam.setColor(Formatting.WHITE);
-        runnersTeam.setPrefix(Text.empty()
-                .append(Text.literal("Runner").formatted(Formatting.GREEN, Formatting.BOLD))
-                .append(Text.literal(" | ").formatted(Formatting.DARK_GRAY)));
+        runnersTeam.setDisplayName(Component.literal("Runners"));
+        runnersTeam.setColor(ChatFormatting.WHITE);
+        runnersTeam.setPlayerPrefix(Component.empty()
+                .append(Component.literal("Runner").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD))
+                .append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY)));
 
         // Create or get Hunters team
-        Team huntersTeam = scoreboard.getTeam(HUNTERS_TEAM);
+        PlayerTeam huntersTeam = scoreboard.getPlayerTeam(HUNTERS_TEAM);
         if (huntersTeam == null) {
-            huntersTeam = scoreboard.addTeam(HUNTERS_TEAM);
+            huntersTeam = scoreboard.addPlayerTeam(HUNTERS_TEAM);
         }
-        huntersTeam.setDisplayName(Text.literal("Hunters"));
-        huntersTeam.setColor(Formatting.WHITE);
-        huntersTeam.setPrefix(Text.empty()
-                .append(Text.literal("Hunter").formatted(Formatting.RED, Formatting.BOLD))
-                .append(Text.literal(" | ").formatted(Formatting.DARK_GRAY)));
+        huntersTeam.setDisplayName(Component.literal("Hunters"));
+        huntersTeam.setColor(ChatFormatting.WHITE);
+        huntersTeam.setPlayerPrefix(Component.empty()
+                .append(Component.literal("Hunter").withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
+                .append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY)));
 
         SoulLink.LOGGER.info("Manhunt teams created/updated");
     }
@@ -175,29 +175,29 @@ public class ManhuntManager {
             return;
 
         Scoreboard scoreboard = server.getScoreboard();
-        Team runnersTeam = scoreboard.getTeam(RUNNERS_TEAM);
-        Team huntersTeam = scoreboard.getTeam(HUNTERS_TEAM);
+        PlayerTeam runnersTeam = scoreboard.getPlayerTeam(RUNNERS_TEAM);
+        PlayerTeam huntersTeam = scoreboard.getPlayerTeam(HUNTERS_TEAM);
 
         if (runnersTeam == null || huntersTeam == null) {
             createTeams(server);
-            runnersTeam = scoreboard.getTeam(RUNNERS_TEAM);
-            huntersTeam = scoreboard.getTeam(HUNTERS_TEAM);
+            runnersTeam = scoreboard.getPlayerTeam(RUNNERS_TEAM);
+            huntersTeam = scoreboard.getPlayerTeam(HUNTERS_TEAM);
         }
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             String playerName = player.getGameProfile().name();
 
             // Remove from any existing team first
-            Team currentTeam = scoreboard.getScoreHolderTeam(playerName);
+            PlayerTeam currentTeam = scoreboard.getPlayersTeam(playerName);
             if (currentTeam != null) {
-                scoreboard.removeScoreHolderFromTeam(playerName, currentTeam);
+                scoreboard.removePlayerFromTeam(playerName, currentTeam);
             }
 
             // Add to appropriate team
-            if (runners.contains(player.getUuid())) {
-                scoreboard.addScoreHolderToTeam(playerName, runnersTeam);
-            } else if (hunters.contains(player.getUuid())) {
-                scoreboard.addScoreHolderToTeam(playerName, huntersTeam);
+            if (runners.contains(player.getUUID())) {
+                scoreboard.addPlayerToTeam(playerName, runnersTeam);
+            } else if (hunters.contains(player.getUUID())) {
+                scoreboard.addPlayerToTeam(playerName, huntersTeam);
             }
         }
 
@@ -215,18 +215,18 @@ public class ManhuntManager {
         Scoreboard scoreboard = server.getScoreboard();
 
         // Remove all players from teams
-        Team runnersTeam = scoreboard.getTeam(RUNNERS_TEAM);
-        Team huntersTeam = scoreboard.getTeam(HUNTERS_TEAM);
+        PlayerTeam runnersTeam = scoreboard.getPlayerTeam(RUNNERS_TEAM);
+        PlayerTeam huntersTeam = scoreboard.getPlayerTeam(HUNTERS_TEAM);
 
         if (runnersTeam != null) {
-            for (String member : new HashSet<>(runnersTeam.getPlayerList())) {
-                scoreboard.removeScoreHolderFromTeam(member, runnersTeam);
+            for (String member : new HashSet<>(runnersTeam.getPlayers())) {
+                scoreboard.removePlayerFromTeam(member, runnersTeam);
             }
         }
 
         if (huntersTeam != null) {
-            for (String member : new HashSet<>(huntersTeam.getPlayerList())) {
-                scoreboard.removeScoreHolderFromTeam(member, huntersTeam);
+            for (String member : new HashSet<>(huntersTeam.getPlayers())) {
+                scoreboard.removePlayerFromTeam(member, huntersTeam);
             }
         }
     }

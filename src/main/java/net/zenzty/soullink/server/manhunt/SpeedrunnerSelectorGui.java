@@ -3,27 +3,24 @@ package net.zenzty.soullink.server.manhunt;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LoreComponent;
-import net.minecraft.component.type.ProfileComponent;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.ScreenHandler;
-import net.minecraft.screen.ScreenHandlerType;
-import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.world.GameMode;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.*;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.ResolvableProfile;
+import net.minecraft.world.level.GameType;
 import net.zenzty.soullink.mixin.ui.ScreenHandlerAccessor;
 import net.zenzty.soullink.server.run.RunManager;
 
@@ -44,38 +41,38 @@ public class SpeedrunnerSelectorGui {
     /**
      * Opens the role selector GUI for a player.
      */
-    public static void open(ServerPlayerEntity player) {
+    public static void open(ServerPlayer player) {
         MinecraftServer server = RunManager.getInstance().getServer();
         if (server == null)
             return;
 
         // Reset roles when opening selector and default all to Runners
         ManhuntManager.getInstance().resetRoles();
-        for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
-            ManhuntManager.getInstance().setRunner(p.getUuid());
+        for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+            ManhuntManager.getInstance().setRunner(p.getUUID());
         }
 
         SelectorInventory inventory = new SelectorInventory(server);
 
-        player.openHandledScreen(
-                new SimpleNamedScreenHandlerFactory((syncId, playerInventory, playerEntity) -> {
+        player.openMenu(
+                new SimpleMenuProvider((syncId, playerInventory, playerEntity) -> {
                     return new SelectorScreenHandler(syncId, inventory, player);
-                }, Text.literal("Select Runners & Hunters").formatted(Formatting.DARK_GRAY)));
+                }, Component.literal("Select Runners & Hunters").withStyle(ChatFormatting.DARK_GRAY)));
     }
 
     /** Builds styled text for GUI items (non-italic, with given formatings). */
-    private static Text createItemName(String text, Formatting... formattings) {
+    private static Component createItemName(String text, ChatFormatting... formattings) {
         Style style = Style.EMPTY.withItalic(false);
-        for (Formatting formatting : formattings) {
-            style = style.withFormatting(formatting);
+        for (ChatFormatting formatting : formattings) {
+            style = style.applyFormat(formatting);
         }
-        return Text.literal(text).setStyle(style);
+        return Component.literal(text).setStyle(style);
     }
 
     /**
      * Inventory containing player heads and confirm button.
      */
-    public static class SelectorInventory extends SimpleInventory {
+    public static class SelectorInventory extends SimpleContainer {
 
         private final MinecraftServer server;
         private final List<UUID> playerOrder = new ArrayList<>();
@@ -88,55 +85,55 @@ public class SpeedrunnerSelectorGui {
 
         public void populateItems() {
             for (int i = 0; i < INVENTORY_SIZE; i++) {
-                setStack(i, createFillerItem());
+                setItem(i, createFillerItem());
             }
 
             playerOrder.clear();
 
-            List<ServerPlayerEntity> players = server.getPlayerManager().getPlayerList();
+            List<ServerPlayer> players = server.getPlayerList().getPlayers();
             for (int i = 0; i < players.size() && i < HEAD_SLOTS.length; i++) {
                 int slot = HEAD_SLOTS[i];
-                ServerPlayerEntity p = players.get(i);
-                playerOrder.add(p.getUuid());
-                setStack(slot, createPlayerHead(p));
+                ServerPlayer p = players.get(i);
+                playerOrder.add(p.getUUID());
+                setItem(slot, createPlayerHead(p));
             }
 
-            setStack(CONFIRM_SLOT, createConfirmItem());
+            setItem(CONFIRM_SLOT, createConfirmItem());
         }
 
         private ItemStack createFillerItem() {
             ItemStack filler = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
-            filler.set(DataComponentTypes.CUSTOM_NAME, Text.literal(" "));
+            filler.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
             return filler;
         }
 
-        private ItemStack createPlayerHead(ServerPlayerEntity player) {
+        private ItemStack createPlayerHead(ServerPlayer player) {
             ItemStack head = new ItemStack(Items.PLAYER_HEAD);
-            head.set(DataComponentTypes.PROFILE,
-                    ProfileComponent.ofStatic(player.getGameProfile()));
+            head.set(DataComponents.PROFILE,
+                    ResolvableProfile.createResolved(player.getGameProfile()));
 
-            boolean isRunner = ManhuntManager.getInstance().isSpeedrunner(player.getUuid());
+            boolean isRunner = ManhuntManager.getInstance().isSpeedrunner(player.getUUID());
             String role = isRunner ? "RUNNER" : "HUNTER";
-            Formatting roleColor = isRunner ? Formatting.GREEN : Formatting.RED;
+            ChatFormatting roleColor = isRunner ? ChatFormatting.GREEN : ChatFormatting.RED;
 
-            head.set(DataComponentTypes.CUSTOM_NAME, createItemName(player.getName().getString(),
-                    Formatting.WHITE, Formatting.BOLD));
+            head.set(DataComponents.CUSTOM_NAME, createItemName(player.getName().getString(),
+                    ChatFormatting.WHITE, ChatFormatting.BOLD));
 
-            LoreComponent lore = new LoreComponent(List.of(
-                    Text.literal("Role: ")
-                            .setStyle(Style.EMPTY.withItalic(false).withFormatting(Formatting.GRAY))
-                            .append(Text.literal(role).setStyle(
-                                    Style.EMPTY.withItalic(false).withFormatting(roleColor))),
-                    Text.empty(), isRunner
-                            ? Text.literal("Shares health with other Runners")
+            ItemLore lore = new ItemLore(List.of(
+                    Component.literal("Role: ")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.GRAY))
+                            .append(Component.literal(role).setStyle(
+                                    Style.EMPTY.withItalic(false).applyFormat(roleColor))),
+                    Component.empty(), isRunner
+                            ? Component.literal("Shares health with other Runners")
                                     .setStyle(Style.EMPTY.withItalic(false)
-                                            .withFormatting(Formatting.DARK_GRAY))
-                            : Text.literal("Vanilla mechanics, hunts Runners")
+                                            .applyFormat(ChatFormatting.DARK_GRAY))
+                            : Component.literal("Vanilla mechanics, hunts Runners")
                                     .setStyle(Style.EMPTY.withItalic(false)
-                                            .withFormatting(Formatting.DARK_GRAY)),
-                    Text.empty(), Text.literal("Click to toggle role").setStyle(
-                            Style.EMPTY.withItalic(false).withFormatting(Formatting.YELLOW))));
-            head.set(DataComponentTypes.LORE, lore);
+                                            .applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.empty(), Component.literal("Click to toggle role").setStyle(
+                            Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.YELLOW))));
+            head.set(DataComponents.LORE, lore);
 
             return head;
         }
@@ -149,38 +146,38 @@ public class SpeedrunnerSelectorGui {
             boolean canStart = runnerCount > 0 && hunterCount > 0;
 
             if (canStart) {
-                item.set(DataComponentTypes.CUSTOM_NAME,
-                        createItemName("✓ Start Run", Formatting.GREEN, Formatting.BOLD));
+                item.set(DataComponents.CUSTOM_NAME,
+                        createItemName("✓ Start Run", ChatFormatting.GREEN, ChatFormatting.BOLD));
             } else {
                 item = new ItemStack(Items.BARRIER);
                 if (runnerCount == 0 && hunterCount == 0) {
-                    item.set(DataComponentTypes.CUSTOM_NAME, createItemName(
-                            "✗ Need Runners & Hunters", Formatting.RED, Formatting.BOLD));
+                    item.set(DataComponents.CUSTOM_NAME, createItemName(
+                            "✗ Need Runners & Hunters", ChatFormatting.RED, ChatFormatting.BOLD));
                 } else if (runnerCount == 0) {
-                    item.set(DataComponentTypes.CUSTOM_NAME, createItemName(
-                            "✗ Need at least 1 Runner", Formatting.RED, Formatting.BOLD));
+                    item.set(DataComponents.CUSTOM_NAME, createItemName(
+                            "✗ Need at least 1 Runner", ChatFormatting.RED, ChatFormatting.BOLD));
                 } else {
-                    item.set(DataComponentTypes.CUSTOM_NAME, createItemName(
-                            "✗ Need at least 1 Hunter", Formatting.RED, Formatting.BOLD));
+                    item.set(DataComponents.CUSTOM_NAME, createItemName(
+                            "✗ Need at least 1 Hunter", ChatFormatting.RED, ChatFormatting.BOLD));
                 }
             }
 
-            LoreComponent lore = new LoreComponent(List.of(
-                    Text.literal("Runners: ")
-                            .setStyle(Style.EMPTY.withItalic(false).withFormatting(Formatting.GRAY))
-                            .append(Text.literal(String.valueOf(runnerCount))
+            ItemLore lore = new ItemLore(List.of(
+                    Component.literal("Runners: ")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.GRAY))
+                            .append(Component.literal(String.valueOf(runnerCount))
                                     .setStyle(Style.EMPTY.withItalic(false)
-                                            .withFormatting(Formatting.GREEN))),
-                    Text.literal("Hunters: ")
-                            .setStyle(Style.EMPTY.withItalic(false).withFormatting(Formatting.GRAY))
-                            .append(Text.literal(String.valueOf(hunterCount)).setStyle(
-                                    Style.EMPTY.withItalic(false).withFormatting(Formatting.RED))),
-                    Text.empty(),
-                    canStart ? Text.literal("Click to start the run!").setStyle(
-                            Style.EMPTY.withItalic(false).withFormatting(Formatting.YELLOW))
-                            : Text.literal("Need at least 1 Runner and 1 Hunter").setStyle(
-                                    Style.EMPTY.withItalic(false).withFormatting(Formatting.RED))));
-            item.set(DataComponentTypes.LORE, lore);
+                                            .applyFormat(ChatFormatting.GREEN))),
+                    Component.literal("Hunters: ")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.GRAY))
+                            .append(Component.literal(String.valueOf(hunterCount)).setStyle(
+                                    Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.RED))),
+                    Component.empty(),
+                    canStart ? Component.literal("Click to start the run!").setStyle(
+                            Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.YELLOW))
+                            : Component.literal("Need at least 1 Runner and 1 Hunter").setStyle(
+                                    Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.RED))));
+            item.set(DataComponents.LORE, lore);
 
             return item;
         }
@@ -195,22 +192,22 @@ public class SpeedrunnerSelectorGui {
     }
 
     private static class VirtualSlot extends Slot {
-        public VirtualSlot(Inventory inventory, int index, int x, int y) {
+        public VirtualSlot(Container inventory, int index, int x, int y) {
             super(inventory, index, x, y);
         }
 
         @Override
-        public boolean canTakeItems(PlayerEntity playerEntity) {
+        public boolean mayPickup(Player playerEntity) {
             return false;
         }
 
         @Override
-        public boolean canInsert(ItemStack stack) {
+        public boolean mayPlace(ItemStack stack) {
             return false;
         }
 
         @Override
-        public boolean canBeHighlighted() {
+        public boolean isHighlightable() {
             return true;
         }
     }
@@ -219,18 +216,18 @@ public class SpeedrunnerSelectorGui {
      * Screen handler for the role selector GUI. Spectators can interact via
      * SpectatorInteractionMixin.
      */
-    public static class SelectorScreenHandler extends ScreenHandler {
+    public static class SelectorScreenHandler extends AbstractContainerMenu {
 
         private final SelectorInventory selectorInventory;
-        private final ServerPlayerEntity player;
+        private final ServerPlayer player;
 
         public SelectorScreenHandler(int syncId, SelectorInventory inventory,
-                ServerPlayerEntity player) {
-            super(ScreenHandlerType.GENERIC_9X6, syncId);
+                ServerPlayer player) {
+            super(MenuType.GENERIC_9x6, syncId);
             this.selectorInventory = inventory;
             this.player = player;
-            checkSize(inventory, INVENTORY_SIZE);
-            inventory.onOpen(player);
+            checkContainerSize(inventory, INVENTORY_SIZE);
+            inventory.startOpen(player);
 
             for (int i = 0; i < INVENTORY_SIZE; i++) {
                 int x = 8 + (i % 9) * 18;
@@ -252,27 +249,26 @@ public class SpeedrunnerSelectorGui {
         }
 
         @Override
-        public void onSlotClick(int slotIndex, int button, SlotActionType actionType,
-                PlayerEntity clickingPlayer) {
+        public void clicked(int slotIndex, int buttonNum, ContainerInput containerInput, Player player) {
             if (slotIndex < INVENTORY_SIZE && slotIndex >= 0) {
                 handleSelectorClick(slotIndex);
 
-                setCursorStack(ItemStack.EMPTY);
+                setCarried(ItemStack.EMPTY);
 
-                if (clickingPlayer instanceof ServerPlayerEntity serverPlayer
-                        && serverPlayer.interactionManager.getGameMode() == GameMode.SPECTATOR) {
+                if (player instanceof ServerPlayer serverPlayer
+                        && serverPlayer.gameMode.getGameModeForPlayer() == GameType.SPECTATOR) {
                     ScreenHandlerAccessor accessor = (ScreenHandlerAccessor) this;
                     accessor.invokeUpdateToClient();
                 } else {
-                    sendContentUpdates();
+                    broadcastChanges();
                 }
                 return;
             }
-            super.onSlotClick(slotIndex, button, actionType, clickingPlayer);
+            super.clicked(slotIndex, buttonNum, containerInput, player);
         }
 
         @Override
-        public ItemStack quickMove(PlayerEntity playerEntity, int slot) {
+        public ItemStack quickMoveStack(Player playerEntity, int slot) {
             return ItemStack.EMPTY;
         }
 
@@ -298,15 +294,13 @@ public class SpeedrunnerSelectorGui {
             ManhuntManager manager = ManhuntManager.getInstance();
 
             if (!manager.hasRunners()) {
-                player.sendMessage(RunManager.formatMessage("Need at least one Runner to start!"),
-                        false);
+                player.sendSystemMessage(RunManager.formatMessage("Need at least one Runner to start!"));
                 playErrorSound();
                 return;
             }
 
             if (!manager.hasHunters()) {
-                player.sendMessage(RunManager.formatMessage("Need at least one Hunter to start!"),
-                        false);
+                player.sendSystemMessage(RunManager.formatMessage("Need at least one Hunter to start!"));
                 playErrorSound();
                 return;
             }
@@ -324,7 +318,7 @@ public class SpeedrunnerSelectorGui {
             server.execute(() -> {
                 if (player.isRemoved())
                     return;
-                player.closeHandledScreen();
+                player.closeContainer();
                 playConfirmSound();
                 broadcastRoleAssignments(server);
                 runManager.startRun();
@@ -341,7 +335,7 @@ public class SpeedrunnerSelectorGui {
 
             List<String> runnerNames = new ArrayList<>();
             for (UUID uuid : manager.getRunners()) {
-                ServerPlayerEntity p = server.getPlayerManager().getPlayer(uuid);
+                ServerPlayer p = server.getPlayerList().getPlayer(uuid);
                 if (p != null) {
                     runnerNames.add(p.getName().getString());
                 }
@@ -349,45 +343,45 @@ public class SpeedrunnerSelectorGui {
 
             List<String> hunterNames = new ArrayList<>();
             for (UUID uuid : manager.getHunters()) {
-                ServerPlayerEntity p = server.getPlayerManager().getPlayer(uuid);
+                ServerPlayer p = server.getPlayerList().getPlayer(uuid);
                 if (p != null) {
                     hunterNames.add(p.getName().getString());
                 }
             }
 
             if (!runnerNames.isEmpty()) {
-                Text runnerMsg = Text.empty().append(RunManager.getPrefix())
-                        .append(Text.literal("Runners: ").formatted(Formatting.GRAY))
-                        .append(Text.literal(String.join(", ", runnerNames))
-                                .formatted(Formatting.GREEN));
-                server.getPlayerManager().broadcast(runnerMsg, false);
+                Component runnerMsg = Component.empty().append(RunManager.getPrefix())
+                        .append(Component.literal("Runners: ").withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal(String.join(", ", runnerNames))
+                                .withStyle(ChatFormatting.GREEN));
+                server.getPlayerList().broadcastSystemMessage(runnerMsg, false);
             }
 
             if (!hunterNames.isEmpty()) {
-                Text hunterMsg = Text.empty().append(RunManager.getPrefix())
-                        .append(Text.literal("Hunters: ").formatted(Formatting.GRAY)).append(Text
-                                .literal(String.join(", ", hunterNames)).formatted(Formatting.RED));
-                server.getPlayerManager().broadcast(hunterMsg, false);
+                Component hunterMsg = Component.empty().append(RunManager.getPrefix())
+                        .append(Component.literal("Hunters: ").withStyle(ChatFormatting.GRAY)).append(Component
+                                .literal(String.join(", ", hunterNames)).withStyle(ChatFormatting.RED));
+                server.getPlayerList().broadcastSystemMessage(hunterMsg, false);
             }
         }
 
         private void playClickSound() {
-            player.getEntityWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.UI_BUTTON_CLICK.value(), SoundCategory.MASTER, 0.5f, 1.0f);
+            player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
+                    SoundEvents.UI_BUTTON_CLICK.value(), SoundSource.MASTER, 0.5f, 1.0f);
         }
 
         private void playConfirmSound() {
-            player.getEntityWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.ENTITY_PLAYER_LEVELUP, SoundCategory.MASTER, 0.5f, 1.0f);
+            player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
+                    SoundEvents.PLAYER_LEVELUP, SoundSource.MASTER, 0.5f, 1.0f);
         }
 
         private void playErrorSound() {
-            player.getEntityWorld().playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.ENTITY_VILLAGER_NO, SoundCategory.MASTER, 0.5f, 1.0f);
+            player.level().playSound(null, player.getX(), player.getY(), player.getZ(),
+                    SoundEvents.VILLAGER_NO, SoundSource.MASTER, 0.5f, 1.0f);
         }
 
         @Override
-        public boolean canUse(PlayerEntity playerEntity) {
+        public boolean stillValid(Player playerEntity) {
             return true;
         }
     }

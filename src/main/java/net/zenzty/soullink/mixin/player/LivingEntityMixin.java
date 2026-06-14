@@ -5,11 +5,11 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.effect.StatusEffects;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
 import net.zenzty.soullink.server.health.SharedStatsHandler;
 import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
 import net.zenzty.soullink.server.run.RunManager;
@@ -27,7 +27,7 @@ public abstract class LivingEntityMixin {
 
     @Inject(method = "heal", at = @At("HEAD"))
     private void recordPreHeal(float amount, CallbackInfo ci) {
-        if ((Object) this instanceof ServerPlayerEntity player) {
+        if ((Object) this instanceof ServerPlayer player) {
             this.preHealHealth = player.getHealth();
         }
     }
@@ -42,7 +42,7 @@ public abstract class LivingEntityMixin {
     @Inject(method = "heal", at = @At("TAIL"))
     private void onHeal(float amount, CallbackInfo ci) {
         // Only process if this is a ServerPlayerEntity
-        if (!((Object) this instanceof ServerPlayerEntity player)) {
+        if (!((Object) this instanceof ServerPlayer player)) {
             return;
         }
 
@@ -61,11 +61,11 @@ public abstract class LivingEntityMixin {
         // from saturation. Exclude potion-based regeneration.
         // Divide by player count to normalize regen speed
         boolean isNaturalRegen = applied <= NATURAL_REGEN_THRESHOLD
-                && !player.hasStatusEffect(StatusEffects.REGENERATION);
+                && !player.hasEffect(MobEffects.REGENERATION);
         if (isNaturalRegen) {
             // Let SharedStatsHandler handle the normalized regen
             SharedStatsHandler.onNaturalRegen(player, applied);
-        } else if (player.hasStatusEffect(StatusEffects.REGENERATION)) {
+        } else if (player.hasEffect(MobEffects.REGENERATION)) {
             // Regeneration effect healing - normalize by player count to prevent multiplication
             // when regeneration is synced to all players
             SharedStatsHandler.onRegenerationHeal(player, applied);
@@ -78,9 +78,9 @@ public abstract class LivingEntityMixin {
     /**
      * Intercepts armor equip via right-click outside inventory to sync to all players.
      */
-    @Inject(method = "equipStack", at = @At("RETURN"))
+    @Inject(method = "setItemSlot", at = @At("RETURN"))
     private void onEquipStack(EquipmentSlot slot, ItemStack stack, CallbackInfo ci) {
-        if (!((Object) this instanceof ServerPlayerEntity player)) {
+        if (!((Object) this instanceof ServerPlayer player)) {
             return;
         }
         if (SharedInventoryHandler.isSyncing()) {

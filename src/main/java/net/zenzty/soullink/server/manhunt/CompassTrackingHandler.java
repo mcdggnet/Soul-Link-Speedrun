@@ -7,20 +7,20 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LodestoneTrackerComponent;
-import net.minecraft.component.type.LoreComponent;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.RegistryKey;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.GlobalPos;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.GlobalPos;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.item.component.LodestoneTracker;
+import net.minecraft.world.level.Level;
 import net.zenzty.soullink.SoulLink;
 
 /**
@@ -36,7 +36,7 @@ public class CompassTrackingHandler {
     private static int tickCounter = 0;
 
     private static final Map<UUID, UUID> hunterTargets = new HashMap<>();
-    private static final Map<UUID, Map<RegistryKey<World>, GlobalPos>> lastKnownPositions =
+    private static final Map<UUID, Map<ResourceKey<Level>, GlobalPos>> lastKnownPositions =
             new HashMap<>();
     /** Hunter UUID -> server tick until which the timer must not overwrite the action bar. */
     private static final Map<UUID, Integer> actionBarSuppressUntilTick = new HashMap<>();
@@ -46,30 +46,30 @@ public class CompassTrackingHandler {
      */
     public static void register() {
         UseItemCallback.EVENT.register((player, world, hand) -> {
-            if (world.isClient()) {
-                return ActionResult.PASS;
+            if (world.isClientSide()) {
+                return InteractionResult.PASS;
             }
 
-            if (!(player instanceof ServerPlayerEntity serverPlayer)) {
-                return ActionResult.PASS;
+            if (!(player instanceof ServerPlayer serverPlayer)) {
+                return InteractionResult.PASS;
             }
 
-            ItemStack stack = player.getStackInHand(hand);
-            if (!stack.isOf(Items.COMPASS)) {
-                return ActionResult.PASS;
+            ItemStack stack = player.getItemInHand(hand);
+            if (!stack.is(Items.COMPASS)) {
+                return InteractionResult.PASS;
             }
 
             ManhuntManager manhunt = ManhuntManager.getInstance();
             if (!manhunt.isHunter(serverPlayer)) {
-                return ActionResult.PASS;
+                return InteractionResult.PASS;
             }
 
-            MinecraftServer server = serverPlayer.getEntityWorld().getServer();
+            MinecraftServer server = serverPlayer.level().getServer();
             if (server != null) {
                 cycleTarget(serverPlayer, server);
             }
 
-            return ActionResult.SUCCESS;
+            return InteractionResult.SUCCESS;
         });
 
         SoulLink.LOGGER.info("Compass tracking handler registered");
@@ -88,51 +88,51 @@ public class CompassTrackingHandler {
 
         ManhuntManager manhunt = ManhuntManager.getInstance();
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (manhunt.isSpeedrunner(player)) {
                 updateLastKnownPosition(player);
             }
         }
 
-        for (ServerPlayerEntity hunter : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer hunter : server.getPlayerList().getPlayers()) {
             if (manhunt.isHunter(hunter)) {
                 updateCompassForHunter(hunter, server);
             }
         }
     }
 
-    private static void updateLastKnownPosition(ServerPlayerEntity runner) {
-        UUID runnerId = runner.getUuid();
-        RegistryKey<World> dimension = runner.getEntityWorld().getRegistryKey();
-        GlobalPos currentPos = GlobalPos.create(dimension, runner.getBlockPos());
+    private static void updateLastKnownPosition(ServerPlayer runner) {
+        UUID runnerId = runner.getUUID();
+        ResourceKey<Level> dimension = runner.level().dimension();
+        GlobalPos currentPos = GlobalPos.of(dimension, runner.blockPosition());
 
         lastKnownPositions.computeIfAbsent(runnerId, k -> new HashMap<>())
                 .put(dimension, currentPos);
     }
 
-    private static void cycleTarget(ServerPlayerEntity hunter, MinecraftServer server) {
+    private static void cycleTarget(ServerPlayer hunter, MinecraftServer server) {
         ManhuntManager manhunt = ManhuntManager.getInstance();
-        List<ServerPlayerEntity> runners = new ArrayList<>();
+        List<ServerPlayer> runners = new ArrayList<>();
 
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (manhunt.isSpeedrunner(player)) {
                 runners.add(player);
             }
         }
 
         if (runners.isEmpty()) {
-            hunter.sendMessage(Text.literal("No runners to track!").formatted(Formatting.RED), true);
-            markCompassMessageShown(hunter.getUuid(), server);
+            hunter.sendOverlayMessage(Component.literal("No runners to track!").withStyle(ChatFormatting.RED));
+            markCompassMessageShown(hunter.getUUID(), server);
             return;
         }
 
-        UUID hunterId = hunter.getUuid();
+        UUID hunterId = hunter.getUUID();
         UUID currentTarget = hunterTargets.get(hunterId);
 
         int currentIndex = -1;
         if (currentTarget != null) {
             for (int i = 0; i < runners.size(); i++) {
-                if (runners.get(i).getUuid().equals(currentTarget)) {
+                if (runners.get(i).getUUID().equals(currentTarget)) {
                     currentIndex = i;
                     break;
                 }
@@ -140,22 +140,21 @@ public class CompassTrackingHandler {
         }
 
         int nextIndex = (currentIndex + 1) % runners.size();
-        ServerPlayerEntity newTarget = runners.get(nextIndex);
-        hunterTargets.put(hunterId, newTarget.getUuid());
+        ServerPlayer newTarget = runners.get(nextIndex);
+        hunterTargets.put(hunterId, newTarget.getUUID());
 
-        RegistryKey<World> hunterDimension = hunter.getEntityWorld().getRegistryKey();
-        RegistryKey<World> targetDimension = newTarget.getEntityWorld().getRegistryKey();
+        ResourceKey<Level> hunterDimension = hunter.level().dimension();
+        ResourceKey<Level> targetDimension = newTarget.level().dimension();
 
         if (hunterDimension.equals(targetDimension)) {
-            hunter.sendMessage(Text.literal("Now tracking: ").formatted(Formatting.GRAY)
-                    .append(Text.literal(newTarget.getName().getString())
-                            .formatted(Formatting.RED, Formatting.BOLD)),
-                    true);
+            hunter.sendOverlayMessage(Component.literal("Now tracking: ").withStyle(ChatFormatting.GRAY)
+                    .append(Component.literal(newTarget.getName().getString())
+                            .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
         } else {
-            hunter.sendMessage(Text.literal("Target in another dimension - showing last location")
-                    .formatted(Formatting.YELLOW), true);
+            hunter.sendOverlayMessage(Component.literal("Target in another dimension - showing last location")
+                    .withStyle(ChatFormatting.YELLOW));
         }
-        markCompassMessageShown(hunter.getUuid(), server);
+        markCompassMessageShown(hunter.getUUID(), server);
 
         updateCompassForHunter(hunter, server);
 
@@ -163,23 +162,23 @@ public class CompassTrackingHandler {
                 newTarget.getName().getString());
     }
 
-    private static void updateCompassForHunter(ServerPlayerEntity hunter, MinecraftServer server) {
-        UUID targetId = hunterTargets.get(hunter.getUuid());
+    private static void updateCompassForHunter(ServerPlayer hunter, MinecraftServer server) {
+        UUID targetId = hunterTargets.get(hunter.getUUID());
         if (targetId == null) {
             return;
         }
 
-        ServerPlayerEntity runner = server.getPlayerManager().getPlayer(targetId);
+        ServerPlayer runner = server.getPlayerList().getPlayer(targetId);
         GlobalPos targetPos = null;
 
         if (runner != null) {
-            RegistryKey<World> hunterDimension = hunter.getEntityWorld().getRegistryKey();
-            RegistryKey<World> runnerDimension = runner.getEntityWorld().getRegistryKey();
+            ResourceKey<Level> hunterDimension = hunter.level().dimension();
+            ResourceKey<Level> runnerDimension = runner.level().dimension();
 
             if (hunterDimension.equals(runnerDimension)) {
-                targetPos = GlobalPos.create(runnerDimension, runner.getBlockPos());
+                targetPos = GlobalPos.of(runnerDimension, runner.blockPosition());
             } else {
-                Map<RegistryKey<World>, GlobalPos> runnerPositions =
+                Map<ResourceKey<Level>, GlobalPos> runnerPositions =
                         lastKnownPositions.get(targetId);
                 if (runnerPositions != null) {
                     targetPos = runnerPositions.get(hunterDimension);
@@ -187,15 +186,15 @@ public class CompassTrackingHandler {
             }
         }
 
-        for (int i = 0; i < hunter.getInventory().size(); i++) {
-            ItemStack stack = hunter.getInventory().getStack(i);
-            if (stack.isOf(Items.COMPASS)) {
+        for (int i = 0; i < hunter.getInventory().getContainerSize(); i++) {
+            ItemStack stack = hunter.getInventory().getItem(i);
+            if (stack.is(Items.COMPASS)) {
                 if (targetPos != null) {
-                    LodestoneTrackerComponent tracker =
-                            new LodestoneTrackerComponent(Optional.of(targetPos), false);
-                    stack.set(DataComponentTypes.LODESTONE_TRACKER, tracker);
+                    LodestoneTracker tracker =
+                            new LodestoneTracker(Optional.of(targetPos), false);
+                    stack.set(DataComponents.LODESTONE_TRACKER, tracker);
                 } else {
-                    stack.remove(DataComponentTypes.LODESTONE_TRACKER);
+                    stack.remove(DataComponents.LODESTONE_TRACKER);
                 }
             }
         }
@@ -204,14 +203,14 @@ public class CompassTrackingHandler {
     /**
      * Gives a tracking compass to a hunter.
      */
-    public static void giveTrackingCompass(ServerPlayerEntity hunter) {
+    public static void giveTrackingCompass(ServerPlayer hunter) {
         ItemStack compass = new ItemStack(Items.COMPASS);
-        compass.set(DataComponentTypes.CUSTOM_NAME, Text.literal("Runner Tracker")
-                .setStyle(Style.EMPTY.withFormatting(Formatting.RED).withItalic(false)));
-        compass.set(DataComponentTypes.LORE,
-                new LoreComponent(List.of(Text.literal("Right Click to swap target")
-                        .setStyle(Style.EMPTY.withFormatting(Formatting.GRAY).withItalic(false)))));
-        hunter.getInventory().insertStack(compass);
+        compass.set(DataComponents.CUSTOM_NAME, Component.literal("Runner Tracker")
+                .setStyle(Style.EMPTY.applyFormat(ChatFormatting.RED).withItalic(false)));
+        compass.set(DataComponents.LORE,
+                new ItemLore(List.of(Component.literal("Right Click to swap target")
+                        .setStyle(Style.EMPTY.applyFormat(ChatFormatting.GRAY).withItalic(false)))));
+        hunter.getInventory().add(compass);
         SoulLink.LOGGER.info("Gave tracking compass to hunter {}", hunter.getName().getString());
     }
 
@@ -220,7 +219,7 @@ public class CompassTrackingHandler {
      * overwrite it for 3 seconds.
      */
     private static void markCompassMessageShown(UUID hunterId, MinecraftServer server) {
-        actionBarSuppressUntilTick.put(hunterId, server.getTicks() + COMPASS_MESSAGE_TICKS);
+        actionBarSuppressUntilTick.put(hunterId, server.getTickCount() + COMPASS_MESSAGE_TICKS);
     }
 
     /**

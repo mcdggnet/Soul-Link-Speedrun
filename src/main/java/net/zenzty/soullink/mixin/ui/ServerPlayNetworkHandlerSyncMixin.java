@@ -5,9 +5,9 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.network.packet.c2s.play.SlotChangedStateC2SPacket;
-import net.minecraft.server.network.ServerPlayNetworkHandler;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.network.protocol.game.ServerboundContainerSlotStateChangedPacket;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.network.ServerGamePacketListenerImpl;
 import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
 
 /**
@@ -15,14 +15,14 @@ import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
  * the server handles it and updates the player's inventory. We sync after the handler returns so
  * all participants see the change.
  */
-@Mixin(ServerPlayNetworkHandler.class)
+@Mixin(ServerGamePacketListenerImpl.class)
 public abstract class ServerPlayNetworkHandlerSyncMixin {
 
     @Shadow
-    public ServerPlayerEntity player;
+    public ServerPlayer player;
 
-    @Inject(method = "onSlotChangedState", at = @At("RETURN"))
-    private void afterSlotChangedState(SlotChangedStateC2SPacket packet, CallbackInfo ci) {
+    @Inject(method = "handleContainerSlotStateChanged", at = @At("RETURN"))
+    private void afterSlotChangedState(ServerboundContainerSlotStateChangedPacket packet, CallbackInfo ci) {
         if (SharedInventoryHandler.isSyncing())
             return;
         if (player == null || player.isRemoved() || !player.isAlive())

@@ -6,16 +6,16 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.entity.player.HungerManager;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.food.FoodData;
 import net.zenzty.soullink.server.health.SharedStatsHandler;
 import net.zenzty.soullink.server.run.RunManager;
 
 /**
  * Mixin for HungerManager to sync hunger changes between players.
  */
-@Mixin(HungerManager.class)
+@Mixin(FoodData.class)
 public abstract class HungerManagerMixin {
 
     @Shadow
@@ -37,8 +37,8 @@ public abstract class HungerManagerMixin {
      * Hunger drain from natural regeneration is divided by player count to prevent Nx drain rate.
      * Hunger gains from eating are synced normally.
      */
-    @Inject(method = "update", at = @At("TAIL"))
-    private void afterHungerUpdate(ServerPlayerEntity player, CallbackInfo ci) {
+    @Inject(method = "tick", at = @At("TAIL"))
+    private void afterHungerUpdate(ServerPlayer player, CallbackInfo ci) {
         // Skip if syncing to prevent loops
         if (SharedStatsHandler.isSyncing()) {
             previousFoodLevel = this.foodLevel;
@@ -54,9 +54,9 @@ public abstract class HungerManagerMixin {
         }
 
         // Get the player's world - ServerPlayerEntity.getEntityWorld() returns ServerWorld directly
-        ServerWorld serverWorld = player.getEntityWorld();
+        ServerLevel serverWorld = player.level();
 
-        if (!runManager.isTemporaryWorld(serverWorld.getRegistryKey())) {
+        if (!runManager.isTemporaryWorld(serverWorld.dimension())) {
             previousFoodLevel = this.foodLevel;
             previousSaturation = this.saturationLevel;
             return;
@@ -100,7 +100,7 @@ public abstract class HungerManagerMixin {
     /**
      * Track when saturation is directly set.
      */
-    @Inject(method = "setSaturationLevel", at = @At("TAIL"))
+    @Inject(method = "setSaturation", at = @At("TAIL"))
     private void afterSetSaturation(float saturationLevel, CallbackInfo ci) {
         previousSaturation = this.saturationLevel;
     }

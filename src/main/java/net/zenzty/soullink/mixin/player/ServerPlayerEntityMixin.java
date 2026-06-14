@@ -5,13 +5,13 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.entity.effect.StatusEffect;
-import net.minecraft.entity.effect.StatusEffectInstance;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.Holder;
+import net.minecraft.network.chat.Component;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.effect.MobEffect;
+import net.minecraft.world.effect.MobEffectInstance;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.server.event.EventRegistry;
 import net.zenzty.soullink.server.manhunt.ManhuntManager;
@@ -22,12 +22,12 @@ import net.zenzty.soullink.server.settings.Settings;
  * Mixin for ServerPlayerEntity: Runners (and non-Manhunt) trigger game over on death. Hunters use
  * custom respawn (spectator, drop items, 5s countdown, respawn).
  */
-@Mixin(ServerPlayerEntity.class)
+@Mixin(ServerPlayer.class)
 public abstract class ServerPlayerEntityMixin {
 
-        @Inject(method = "onDeath", at = @At("HEAD"), cancellable = true)
+        @Inject(method = "die", at = @At("HEAD"), cancellable = true)
         private void onDeathHandler(DamageSource damageSource, CallbackInfo ci) {
-                ServerPlayerEntity player = (ServerPlayerEntity) (Object) this;
+                ServerPlayer player = (ServerPlayer) (Object) this;
                 RunManager runManager = RunManager.getInstance();
 
                 if (runManager == null || !runManager.isRunActive()) {
@@ -49,21 +49,21 @@ public abstract class ServerPlayerEntityMixin {
 
                 ci.cancel();
 
-                Text deathMessage = damageSource.getDeathMessage(player);
-                Text formattedDeathMessage = Text.empty().append(RunManager.getPrefix())
-                                .append(Text.literal("☠ ").formatted(Formatting.DARK_RED))
-                                .append(deathMessage.copy().formatted(Formatting.RED));
-                runManager.getServer().getPlayerManager().broadcast(formattedDeathMessage, false);
+                Component deathMessage = damageSource.getLocalizedDeathMessage(player);
+                Component formattedDeathMessage = Component.empty().append(RunManager.getPrefix())
+                                .append(Component.literal("☠ ").withStyle(ChatFormatting.DARK_RED))
+                                .append(deathMessage.copy().withStyle(ChatFormatting.RED));
+                runManager.getServer().getPlayerList().broadcastSystemMessage(formattedDeathMessage, false);
 
                 player.setHealth(player.getMaxHealth());
 
-                List<RegistryEntry<StatusEffect>> effectsToRemove = player.getStatusEffects()
+                List<Holder<MobEffect>> effectsToRemove = player.getActiveEffects()
                                 .stream()
-                                .filter(effect -> !effect.getEffectType().value().isBeneficial())
-                                .map(StatusEffectInstance::getEffectType).toList();
+                                .filter(effect -> !effect.getEffect().value().isBeneficial())
+                                .map(MobEffectInstance::getEffect).toList();
 
-                effectsToRemove.forEach(player::removeStatusEffect);
-                player.extinguish();
+                effectsToRemove.forEach(player::removeEffect);
+                player.clearFire();
 
                 if (!runManager.isGameOver()) {
                         net.minecraft.server.MinecraftServer server = runManager.getServer();
