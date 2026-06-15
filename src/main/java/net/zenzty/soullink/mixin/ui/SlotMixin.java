@@ -6,12 +6,12 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.entity.player.PlayerInventory;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
 
 /**
@@ -24,14 +24,14 @@ public abstract class SlotMixin {
 
     @Shadow
     @Final
-    public Inventory inventory;
+    public Container container;
 
-    @Inject(method = "setStack(Lnet/minecraft/item/ItemStack;)V", at = @At("RETURN"))
+    @Inject(method = "setByPlayer(Lnet/minecraft/world/item/ItemStack;)V", at = @At("RETURN"))
     private void onSetStack(ItemStack stack, CallbackInfo ci) {
         syncIfPlayerInventory();
     }
 
-    @Inject(method = "setStack(Lnet/minecraft/item/ItemStack;Lnet/minecraft/item/ItemStack;)V",
+    @Inject(method = "setByPlayer(Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/item/ItemStack;)V",
             at = @At("RETURN"))
     private void onSetStackWithPrevious(ItemStack stack, ItemStack previousStack, CallbackInfo ci) {
         syncIfPlayerInventory();
@@ -42,11 +42,11 @@ public abstract class SlotMixin {
         if (SharedInventoryHandler.isSyncing()) {
             return;
         }
-        if (inventory == null || !(inventory instanceof PlayerInventory playerInv)) {
+        if (container == null || !(container instanceof Inventory playerInv)) {
             return;
         }
-        PlayerEntity p = playerInv.player;
-        if (p == null || !(p instanceof ServerPlayerEntity serverPlayer)) {
+        Player p = playerInv.player;
+        if (p == null || !(p instanceof ServerPlayer serverPlayer)) {
             return;
         }
         // Additional safety check: don't sync if player is being removed or is invalid

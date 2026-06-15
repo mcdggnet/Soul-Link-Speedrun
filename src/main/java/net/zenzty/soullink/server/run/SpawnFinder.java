@@ -1,18 +1,18 @@
 package net.zenzty.soullink.server.run;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.block.Blocks;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.tag.BiomeTags;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.Heightmap;
-import net.minecraft.world.biome.Biome;
-import net.minecraft.world.biome.source.BiomeAccess;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.tags.BiomeTags;
+import net.minecraft.world.level.biome.Biome;
+import net.minecraft.world.level.biome.BiomeManager;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.zenzty.soullink.SoulLink;
 
 /**
@@ -62,7 +62,7 @@ public class SpawnFinder {
      * @param server The server for broadcasting progress
      * @return true if spawn found or search exhausted, false if still searching
      */
-    public boolean processStep(ServerWorld world, MinecraftServer server) {
+    public boolean processStep(ServerLevel world, MinecraftServer server) {
         int checksThisTick = 0;
 
         // Check multiple spots per tick to speed up without freezing
@@ -88,14 +88,14 @@ public class SpawnFinder {
         }
 
         // Update action bar with progress for all players
-        if (server.getTicks() % 10 == 0) {
+        if (server.getTickCount() % 10 == 0) {
             int progress = Math.min(100, (searchRadius * 100) / MAX_SEARCH_RADIUS);
-            Text statusText = Text.empty().append(Text.literal("⟳ ").formatted(Formatting.GRAY))
-                    .append(Text.literal("Finding spawn... " + progress + "%")
-                            .formatted(Formatting.GRAY));
+            Component statusText = Component.empty().append(Component.literal("⟳ ").withStyle(ChatFormatting.GRAY))
+                    .append(Component.literal("Finding spawn... " + progress + "%")
+                            .withStyle(ChatFormatting.GRAY));
 
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-                player.sendMessage(statusText, true);
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                player.sendOverlayMessage(statusText);
             }
         }
 
@@ -105,12 +105,12 @@ public class SpawnFinder {
     /**
      * Checks if coordinates are in an ocean biome WITHOUT loading the chunk.
      */
-    private boolean isOceanBiome(ServerWorld world, int x, int z) {
+    private boolean isOceanBiome(ServerLevel world, int x, int z) {
         try {
-            BiomeAccess biomeAccess = world.getBiomeAccess();
+            BiomeManager biomeAccess = world.getBiomeManager();
             BlockPos samplePos = new BlockPos(x, 64, z);
-            RegistryEntry<Biome> biome = biomeAccess.getBiome(samplePos);
-            return biome.isIn(BiomeTags.IS_OCEAN) || biome.isIn(BiomeTags.IS_DEEP_OCEAN);
+            Holder<Biome> biome = biomeAccess.getBiome(samplePos);
+            return biome.is(BiomeTags.IS_OCEAN) || biome.is(BiomeTags.IS_DEEP_OCEAN);
         } catch (Exception e) {
             SoulLink.LOGGER.trace("Error checking ocean biome at {}, {}: {}", x, z, e.getMessage());
             return false;
@@ -120,7 +120,7 @@ public class SpawnFinder {
     /**
      * Checks if a location is suitable for spawning (solid ground, not water/lava).
      */
-    private BlockPos checkSpawnLocation(ServerWorld world, int x, int z) {
+    private BlockPos checkSpawnLocation(ServerLevel world, int x, int z) {
         // OPTIMIZATION: Check biome first before loading the chunk
         if (isOceanBiome(world, x, z)) {
             return null;
@@ -129,7 +129,7 @@ public class SpawnFinder {
         // Force chunk to load (only for non-ocean biomes now)
         world.getChunk(x >> 4, z >> 4);
 
-        int y = world.getTopY(Heightmap.Type.MOTION_BLOCKING_NO_LEAVES, x, z);
+        int y = world.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, x, z);
 
         if (y < 50 || y > 200) {
             return null;
@@ -142,9 +142,9 @@ public class SpawnFinder {
         BlockState standState = world.getBlockState(standPos);
         BlockState headState = world.getBlockState(headPos);
 
-        if (groundState.isSolidBlock(world, groundPos) && !groundState.isOf(Blocks.WATER)
-                && !groundState.isOf(Blocks.LAVA) && !groundState.isOf(Blocks.ICE)
-                && !groundState.isOf(Blocks.PACKED_ICE) && !groundState.isOf(Blocks.BLUE_ICE)
+        if (groundState.isRedstoneConductor(world, groundPos) && !groundState.is(Blocks.WATER)
+                && !groundState.is(Blocks.LAVA) && !groundState.is(Blocks.ICE)
+                && !groundState.is(Blocks.PACKED_ICE) && !groundState.is(Blocks.BLUE_ICE)
                 && standState.isAir() && headState.isAir()) {
             return new BlockPos(x, y, z);
         }

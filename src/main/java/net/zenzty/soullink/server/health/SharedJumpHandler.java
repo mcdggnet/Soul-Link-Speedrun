@@ -3,10 +3,10 @@ package net.zenzty.soullink.server.health;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
-import net.minecraft.network.packet.s2c.play.EntityVelocityUpdateS2CPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityMotionPacket;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.server.run.RunManager;
 import net.zenzty.soullink.server.settings.Settings;
@@ -41,7 +41,7 @@ public class SharedJumpHandler {
      * Called when a player jumps naturally. Registers them as a jumper for this tick, but defers
      * forcing others until the end of the tick to prevent race conditions.
      */
-    public static void onPlayerJump(ServerPlayerEntity player) {
+    public static void onPlayerJump(ServerPlayer player) {
         Settings settings = Settings.getInstance();
         if (!settings.isSharedJumping()) {
             return;
@@ -52,7 +52,7 @@ public class SharedJumpHandler {
             return;
         }
 
-        if (!runManager.isTemporaryWorld(player.getEntityWorld().getRegistryKey())) {
+        if (!runManager.isTemporaryWorld(player.level().dimension())) {
             return;
         }
 
@@ -60,7 +60,7 @@ public class SharedJumpHandler {
         if (server == null)
             return;
 
-        int currentTick = server.getTicks();
+        int currentTick = server.getTickCount();
 
         // If this is a new tick, clear the sets only if we've already processed the previous tick
         // This prevents clearing sets before processing if a new tick starts early
@@ -77,7 +77,7 @@ public class SharedJumpHandler {
         // Add this player to the jumpers set (only if not already processing)
         // This prevents double-counting if somehow called during processing
         if (!processingJumps) {
-            jumpersThisTick.add(player.getUuid());
+            jumpersThisTick.add(player.getUUID());
         }
 
         // Log for debugging
@@ -116,25 +116,25 @@ public class SharedJumpHandler {
         processingJumps = true;
         try {
             // Force all non-jumping players to jump
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 // Skip players not in the run
-                ServerWorld playerWorld = player.getEntityWorld();
+                ServerLevel playerWorld = player.level();
                 if (playerWorld == null
-                        || !runManager.isTemporaryWorld(playerWorld.getRegistryKey())) {
+                        || !runManager.isTemporaryWorld(playerWorld.dimension())) {
                     continue;
                 }
 
                 // Skip players who already jumped naturally this tick
-                if (jumpersThisTick.contains(player.getUuid()))
+                if (jumpersThisTick.contains(player.getUUID()))
                     continue;
 
                 // Skip players who have already been forced to jump this tick
-                if (forcedJumpersThisTick.contains(player.getUuid()))
+                if (forcedJumpersThisTick.contains(player.getUUID()))
                     continue;
 
                 // Apply force jump to this player
                 applyForceJump(player);
-                forcedJumpersThisTick.add(player.getUuid());
+                forcedJumpersThisTick.add(player.getUUID());
             }
 
             SoulLink.LOGGER.debug(
@@ -156,21 +156,21 @@ public class SharedJumpHandler {
     /**
      * Applies a jump force to a player (upward only).
      */
-    private static void applyForceJump(ServerPlayerEntity player) {
+    private static void applyForceJump(ServerPlayer player) {
         // Only apply if player is on the ground (prevent air stacking)
-        if (!player.isOnGround()) {
+        if (!player.onGround()) {
             return;
         }
 
         // Invoke vanilla jump path to trigger stats, exhaustion, and sounds
-        player.jump();
+        player.jumpFromGround();
 
         // If server->client velocity sync is still required, follow it with the packet send
         // Note: player.jump() usually handles velocity, but server-side jump might need explicit
         // sync for some entities
 
         // Send velocity update packet to sync with client
-        player.networkHandler.sendPacket(new EntityVelocityUpdateS2CPacket(player));
+        player.connection.send(new ClientboundSetEntityMotionPacket(player));
 
         SoulLink.LOGGER.debug("[Shared Jump] Forced jump applied to {}",
                 player.getName().getString());

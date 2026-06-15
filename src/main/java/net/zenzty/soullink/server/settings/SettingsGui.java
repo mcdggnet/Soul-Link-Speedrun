@@ -2,25 +2,22 @@ package net.zenzty.soullink.server.settings;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LoreComponent;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandlerType;
-import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.GameMode;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.*;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.level.GameType;
 import net.zenzty.soullink.mixin.ui.ScreenHandlerAccessor;
 import net.zenzty.soullink.server.run.RunManager;
 
@@ -48,7 +45,7 @@ public class SettingsGui {
          * Opens the settings GUI for a player. Note: Spectators can view but cannot interact due to
          * Minecraft client limitations.
          */
-        public static void open(ServerPlayerEntity player) {
+        public static void open(ServerPlayer player) {
                 Settings settings = Settings.getInstance();
                 // Pre-fill from pending if it exists (so the GUI shows queued changes, not the
                 // in-memory values for the current run). Otherwise use current settings and world
@@ -58,7 +55,7 @@ public class SettingsGui {
                 if (pending != null) {
                         originalSnapshot = pending;
                 } else {
-                        Difficulty worldDifficulty = player.getEntityWorld().getDifficulty();
+                        Difficulty worldDifficulty = player.level().getDifficulty();
                         if (worldDifficulty == Difficulty.PEACEFUL) {
                                 worldDifficulty = Difficulty.EASY;
                         }
@@ -72,29 +69,29 @@ public class SettingsGui {
                 SettingsInventory inventory = new SettingsInventory(originalSnapshot);
 
                 // Open the screen
-                player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                player.openMenu(new SimpleMenuProvider(
                                 (syncId, playerInventory, playerEntity) -> {
                                         return new SettingsScreenHandler(syncId, inventory, player);
-                                }, Text.literal("Soul Link Chaos Modes")
-                                                .formatted(Formatting.DARK_GRAY)));
+                                }, Component.literal("Soul Link Chaos Modes")
+                                                .withStyle(ChatFormatting.DARK_GRAY)));
         }
 
         /**
          * Creates a non-italic text for item names.
          */
-        private static Text createItemName(String text, Formatting... formattings) {
+        private static Component createItemName(String text, ChatFormatting... formattings) {
                 Style style = Style.EMPTY.withItalic(false);
-                for (Formatting formatting : formattings) {
-                        style = style.withFormatting(formatting);
+                for (ChatFormatting formatting : formattings) {
+                        style = style.applyFormat(formatting);
                 }
-                return Text.literal(text).setStyle(style);
+                return Component.literal(text).setStyle(style);
         }
 
         /**
          * Virtual inventory that tracks pending settings changes. This is a server-side only
          * inventory that doesn't represent any real container in the world.
          */
-        public static class SettingsInventory extends SimpleInventory {
+        public static class SettingsInventory extends SimpleContainer {
 
                 private Difficulty pendingDifficulty;
                 private boolean pendingHalfHeart;
@@ -123,31 +120,31 @@ public class SettingsGui {
                 public void populateItems() {
                         // Fill with gray stained glass panes as background
                         ItemStack filler = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
-                        filler.set(DataComponentTypes.CUSTOM_NAME, Text.literal(" "));
+                        filler.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
                         for (int i = 0; i < INVENTORY_SIZE; i++) {
-                                setStack(i, filler.copy());
+                                setItem(i, filler.copy());
                         }
 
                         // Add difficulty setting
-                        setStack(DIFFICULTY_SLOT, createDifficultyItem());
+                        setItem(DIFFICULTY_SLOT, createDifficultyItem());
 
                         // Add half heart setting
-                        setStack(HALF_HEART_SLOT, createHalfHeartItem());
+                        setItem(HALF_HEART_SLOT, createHalfHeartItem());
 
                         // Add shared potions setting
-                        setStack(SHARED_POTIONS_SLOT, createSharedPotionsItem());
+                        setItem(SHARED_POTIONS_SLOT, createSharedPotionsItem());
 
                         // Add shared jumping setting
-                        setStack(SHARED_JUMPING_SLOT, createSharedJumpingItem());
+                        setItem(SHARED_JUMPING_SLOT, createSharedJumpingItem());
 
                         // Add manhunt mode setting
-                        setStack(MANHUNT_SLOT, createManhuntItem());
+                        setItem(MANHUNT_SLOT, createManhuntItem());
 
                         // Add synced inventory setting
-                        setStack(SYNCED_INVENTORY_SLOT, createSyncedInventoryItem());
+                        setItem(SYNCED_INVENTORY_SLOT, createSyncedInventoryItem());
 
                         // Add confirm button
-                        setStack(CONFIRM_SLOT, createConfirmItem());
+                        setItem(CONFIRM_SLOT, createConfirmItem());
                 }
 
                 private ItemStack createDifficultyItem() {
@@ -157,8 +154,8 @@ public class SettingsGui {
                                 case HARD -> Items.DIAMOND_SWORD;
                                 default -> Items.WOODEN_SWORD;
                         });
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Difficulty",
-                                        Formatting.RED, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Difficulty",
+                                        ChatFormatting.RED, ChatFormatting.BOLD));
 
                         String difficultyName = switch (pendingDifficulty) {
                                 case PEACEFUL -> "Peaceful";
@@ -167,34 +164,34 @@ public class SettingsGui {
                                 case HARD -> "Hard";
                         };
 
-                        Formatting difficultyColor = switch (pendingDifficulty) {
-                                case EASY -> Formatting.GREEN;
-                                case NORMAL -> Formatting.YELLOW;
-                                case HARD -> Formatting.RED;
-                                default -> Formatting.WHITE;
+                        ChatFormatting difficultyColor = switch (pendingDifficulty) {
+                                case EASY -> ChatFormatting.GREEN;
+                                case NORMAL -> ChatFormatting.YELLOW;
+                                case HARD -> ChatFormatting.RED;
+                                default -> ChatFormatting.WHITE;
                         };
 
-                        LoreComponent difficultyLore = new LoreComponent(List.of(Text
+                        ItemLore difficultyLore = new ItemLore(List.of(Component
                                         .literal("Change to: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(Text.literal(difficultyName).setStyle(Style.EMPTY
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(Component.literal(difficultyName).setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(difficultyColor))),
-                                        Text.empty(),
-                                        Text.literal("Current: ").setStyle(Style.EMPTY
+                                                        .applyFormat(difficultyColor))),
+                                        Component.empty(),
+                                        Component.literal("Current: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(Text.literal(getDifficultyName(
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(Component.literal(getDifficultyName(
                                                                         original.difficulty()))
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.WHITE))),
-                                        Text.empty(),
-                                        Text.literal("Click to cycle difficulty")
+                                                                                        .applyFormat(ChatFormatting.WHITE))),
+                                        Component.empty(),
+                                        Component.literal("Click to cycle difficulty")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, difficultyLore);
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, difficultyLore);
 
                         return item;
                 }
@@ -202,31 +199,31 @@ public class SettingsGui {
                 private ItemStack createHalfHeartItem() {
                         ItemStack item = new ItemStack(
                                         pendingHalfHeart ? Items.GOLDEN_APPLE : Items.APPLE);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Half Hearted Mode",
-                                        Formatting.LIGHT_PURPLE, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Half Hearted Mode",
+                                        ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD));
 
-                        LoreComponent halfHeartLore = new LoreComponent(List.of(
-                                        Text.literal("Status: ").setStyle(Style.EMPTY
+                        ItemLore halfHeartLore = new ItemLore(List.of(
+                                        Component.literal("Status: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(pendingHalfHeart ? Text
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(pendingHalfHeart ? Component
                                                                         .literal("ENABLED")
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.GREEN))
-                                                                        : Text.literal("DISABLED")
+                                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                                        : Component.literal("DISABLED")
                                                                                         .setStyle(Style.EMPTY
                                                                                                         .withItalic(false)
-                                                                                                        .withFormatting(Formatting.RED))),
-                                        Text.empty(),
-                                        Text.literal("Players have only 1 health point!")
+                                                                                                        .applyFormat(ChatFormatting.RED))),
+                                        Component.empty(),
+                                        Component.literal("Players have only 1 health point!")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to toggle").setStyle(Style.EMPTY
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to toggle").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, halfHeartLore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, halfHeartLore);
 
                         return item;
                 }
@@ -235,34 +232,34 @@ public class SettingsGui {
                         ItemStack item = new ItemStack(pendingSharedPotions ? Items.DRAGON_BREATH
                                         : Items.GLASS_BOTTLE);
 
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName(
-                                        "Shared Potions Mode", Formatting.BLUE, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName(
+                                        "Shared Potions Mode", ChatFormatting.BLUE, ChatFormatting.BOLD));
 
-                        LoreComponent sharedPotionsLore = new LoreComponent(List.of(
-                                        Text.literal("Status: ").setStyle(Style.EMPTY
+                        ItemLore sharedPotionsLore = new ItemLore(List.of(
+                                        Component.literal("Status: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(pendingSharedPotions ? Text
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(pendingSharedPotions ? Component
                                                                         .literal("ENABLED")
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.GREEN))
-                                                                        : Text.literal("DISABLED")
+                                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                                        : Component.literal("DISABLED")
                                                                                         .setStyle(Style.EMPTY
                                                                                                         .withItalic(false)
-                                                                                                        .withFormatting(Formatting.RED))),
-                                        Text.empty(),
-                                        Text.literal("Potion effects are shared between")
+                                                                                                        .applyFormat(ChatFormatting.RED))),
+                                        Component.empty(),
+                                        Component.literal("Potion effects are shared between")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.literal("all players.").setStyle(Style.EMPTY
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.literal("all players.").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to toggle").setStyle(Style.EMPTY
+                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to toggle").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, sharedPotionsLore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, sharedPotionsLore);
 
                         return item;
                 }
@@ -270,30 +267,30 @@ public class SettingsGui {
                 private ItemStack createSharedJumpingItem() {
                         ItemStack item = new ItemStack(
                                         pendingSharedJumping ? Items.RABBIT_FOOT : Items.FEATHER);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName(
-                                        "Shared Jumping Mode", Formatting.YELLOW, Formatting.BOLD));
-                        LoreComponent sharedJumpingLore = new LoreComponent(List.of(
-                                        Text.literal("Status: ").setStyle(Style.EMPTY
+                        item.set(DataComponents.CUSTOM_NAME, createItemName(
+                                        "Shared Jumping Mode", ChatFormatting.YELLOW, ChatFormatting.BOLD));
+                        ItemLore sharedJumpingLore = new ItemLore(List.of(
+                                        Component.literal("Status: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(pendingSharedJumping ? Text
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(pendingSharedJumping ? Component
                                                                         .literal("ENABLED")
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.GREEN))
-                                                                        : Text.literal("DISABLED")
+                                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                                        : Component.literal("DISABLED")
                                                                                         .setStyle(Style.EMPTY
                                                                                                         .withItalic(false)
-                                                                                                        .withFormatting(Formatting.RED))),
-                                        Text.empty(),
-                                        Text.literal("If one player jumps, all players jump.")
+                                                                                                        .applyFormat(ChatFormatting.RED))),
+                                        Component.empty(),
+                                        Component.literal("If one player jumps, all players jump.")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to toggle").setStyle(Style.EMPTY
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to toggle").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, sharedJumpingLore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, sharedJumpingLore);
 
                         return item;
                 }
@@ -301,33 +298,33 @@ public class SettingsGui {
                 private ItemStack createManhuntItem() {
                         ItemStack item = new ItemStack(
                                         pendingManhunt ? Items.COMPASS : Items.ENDER_EYE);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Manhunt Mode",
-                                        Formatting.DARK_PURPLE, Formatting.BOLD));
-                        LoreComponent manhuntLore = new LoreComponent(List.of(
-                                        Text.literal("Status: ").setStyle(Style.EMPTY
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Manhunt Mode",
+                                        ChatFormatting.DARK_PURPLE, ChatFormatting.BOLD));
+                        ItemLore manhuntLore = new ItemLore(List.of(
+                                        Component.literal("Status: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(pendingManhunt ? Text
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(pendingManhunt ? Component
                                                                         .literal("ENABLED")
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.GREEN))
-                                                                        : Text.literal("DISABLED")
+                                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                                        : Component.literal("DISABLED")
                                                                                         .setStyle(Style.EMPTY
                                                                                                         .withItalic(false)
-                                                                                                        .withFormatting(Formatting.RED))),
-                                        Text.empty(),
-                                        Text.literal("Runners share health; Hunters hunt.")
+                                                                                                        .applyFormat(ChatFormatting.RED))),
+                                        Component.empty(),
+                                        Component.literal("Runners share health; Hunters hunt.")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.literal("30s head start, hunter respawns.")
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.literal("30s head start, hunter respawns.")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to toggle").setStyle(Style.EMPTY
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to toggle").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, manhuntLore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, manhuntLore);
 
                         return item;
                 }
@@ -335,133 +332,133 @@ public class SettingsGui {
                 private ItemStack createSyncedInventoryItem() {
                         ItemStack item = new ItemStack(
                                         pendingSyncedInventory ? Items.COPPER_CHEST : Items.CHEST);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Synced Inventory",
-                                        Formatting.DARK_AQUA, Formatting.BOLD));
-                        LoreComponent lore = new LoreComponent(List.of(
-                                        Text.literal("Status: ").setStyle(Style.EMPTY
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Synced Inventory",
+                                        ChatFormatting.DARK_AQUA, ChatFormatting.BOLD));
+                        ItemLore lore = new ItemLore(List.of(
+                                        Component.literal("Status: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(pendingSyncedInventory ? Text
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(pendingSyncedInventory ? Component
                                                                         .literal("ENABLED")
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.GREEN))
-                                                                        : Text.literal("DISABLED")
+                                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                                        : Component.literal("DISABLED")
                                                                                         .setStyle(Style.EMPTY
                                                                                                         .withItalic(false)
-                                                                                                        .withFormatting(Formatting.RED))),
-                                        Text.empty(),
-                                        Text.literal("All players share the same inventory")
+                                                                                                        .applyFormat(ChatFormatting.RED))),
+                                        Component.empty(),
+                                        Component.literal("All players share the same inventory")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.literal("(main, hotbar, armor, offhand).")
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.literal("(main, hotbar, armor, offhand).")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to toggle").setStyle(Style.EMPTY
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to toggle").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, lore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, lore);
 
                         return item;
                 }
 
                 private ItemStack createConfirmItem() {
                         ItemStack item = new ItemStack(Items.EMERALD);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("✓ Confirm",
-                                        Formatting.GREEN, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("✓ Confirm",
+                                        ChatFormatting.GREEN, ChatFormatting.BOLD));
 
-                        List<Text> loreLines = new ArrayList<>();
+                        List<Component> loreLines = new ArrayList<>();
 
                         // Current Settings header
-                        loreLines.add(Text.literal("Current Settings:").setStyle(Style.EMPTY
-                                        .withItalic(false).withFormatting(Formatting.WHITE)));
+                        loreLines.add(Component.literal("Current Settings:").setStyle(Style.EMPTY
+                                        .withItalic(false).applyFormat(ChatFormatting.WHITE)));
 
                         // Difficulty
                         String diffName = getDifficultyName(pendingDifficulty);
-                        Formatting diffColor = switch (pendingDifficulty) {
-                                case EASY -> Formatting.GREEN;
-                                case NORMAL -> Formatting.YELLOW;
-                                case HARD -> Formatting.RED;
-                                default -> Formatting.WHITE;
+                        ChatFormatting diffColor = switch (pendingDifficulty) {
+                                case EASY -> ChatFormatting.GREEN;
+                                case NORMAL -> ChatFormatting.YELLOW;
+                                case HARD -> ChatFormatting.RED;
+                                default -> ChatFormatting.WHITE;
                         };
-                        loreLines.add(Text.literal("  • Difficulty: ")
+                        loreLines.add(Component.literal("  • Difficulty: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(Text.literal(diffName).setStyle(Style.EMPTY
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(Component.literal(diffName).setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(diffColor))));
+                                                        .applyFormat(diffColor))));
 
                         // Half-Heart Mode
-                        loreLines.add(Text.literal("  • Half-Heart Mode: ")
+                        loreLines.add(Component.literal("  • Half-Heart Mode: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(pendingHalfHeart ? Text.literal("Enabled")
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(pendingHalfHeart ? Component.literal("Enabled")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GREEN))
-                                                        : Text.literal("Disabled").setStyle(
+                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                        : Component.literal("Disabled").setStyle(
                                                                         Style.EMPTY.withItalic(
                                                                                         false)
-                                                                                        .withFormatting(Formatting.RED))));
+                                                                                        .applyFormat(ChatFormatting.RED))));
 
                         // Shared Effects
-                        loreLines.add(Text.literal("  • Shared Effects: ")
+                        loreLines.add(Component.literal("  • Shared Effects: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(pendingSharedPotions ? Text.literal("Enabled")
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(pendingSharedPotions ? Component.literal("Enabled")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GREEN))
-                                                        : Text.literal("Disabled").setStyle(
+                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                        : Component.literal("Disabled").setStyle(
                                                                         Style.EMPTY.withItalic(
                                                                                         false)
-                                                                                        .withFormatting(Formatting.RED))));
+                                                                                        .applyFormat(ChatFormatting.RED))));
 
                         // Shared Jump
-                        loreLines.add(Text.literal("  • Shared Jump: ")
+                        loreLines.add(Component.literal("  • Shared Jump: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(pendingSharedJumping ? Text.literal("Enabled")
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(pendingSharedJumping ? Component.literal("Enabled")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GREEN))
-                                                        : Text.literal("Disabled").setStyle(
+                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                        : Component.literal("Disabled").setStyle(
                                                                         Style.EMPTY.withItalic(
                                                                                         false)
-                                                                                        .withFormatting(Formatting.RED))));
+                                                                                        .applyFormat(ChatFormatting.RED))));
 
                         // Manhunt Mode
-                        loreLines.add(Text.literal("  • Manhunt Mode: ")
+                        loreLines.add(Component.literal("  • Manhunt Mode: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(pendingManhunt ? Text.literal("Enabled")
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(pendingManhunt ? Component.literal("Enabled")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GREEN))
-                                                        : Text.literal("Disabled").setStyle(
+                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                        : Component.literal("Disabled").setStyle(
                                                                         Style.EMPTY.withItalic(
                                                                                         false)
-                                                                                        .withFormatting(Formatting.RED))));
+                                                                                        .applyFormat(ChatFormatting.RED))));
 
                         // Synced Inventory
-                        loreLines.add(Text.literal("  • Synced Inventory: ")
+                        loreLines.add(Component.literal("  • Synced Inventory: ")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                        .append(pendingSyncedInventory ? Text.literal("Enabled")
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                        .append(pendingSyncedInventory ? Component.literal("Enabled")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GREEN))
-                                                        : Text.literal("Disabled").setStyle(
+                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                        : Component.literal("Disabled").setStyle(
                                                                         Style.EMPTY.withItalic(
                                                                                         false)
-                                                                                        .withFormatting(Formatting.RED))));
+                                                                                        .applyFormat(ChatFormatting.RED))));
 
-                        loreLines.add(Text.empty());
-                        loreLines.add(Text.literal("⚠ Settings apply next run!")
+                        loreLines.add(Component.empty());
+                        loreLines.add(Component.literal("⚠ Settings apply next run!")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.YELLOW)));
-                        loreLines.add(Text.empty());
-                        loreLines.add(Text.literal("Click to save and close.").setStyle(Style.EMPTY
-                                        .withItalic(false).withFormatting(Formatting.DARK_GRAY)));
+                                                        .applyFormat(ChatFormatting.YELLOW)));
+                        loreLines.add(Component.empty());
+                        loreLines.add(Component.literal("Click to save and close.").setStyle(Style.EMPTY
+                                        .withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)));
 
-                        LoreComponent lore = new LoreComponent(loreLines);
-                        item.set(DataComponentTypes.LORE, lore);
+                        ItemLore lore = new ItemLore(loreLines);
+                        item.set(DataComponents.LORE, lore);
 
                         return item;
                 }
@@ -544,24 +541,24 @@ public class SettingsGui {
          * moved.
          */
         private static class VirtualSlot extends Slot {
-                public VirtualSlot(Inventory inventory, int index, int x, int y) {
+                public VirtualSlot(Container inventory, int index, int x, int y) {
                         super(inventory, index, x, y);
                 }
 
                 @Override
-                public boolean canTakeItems(PlayerEntity playerEntity) {
+                public boolean mayPickup(Player playerEntity) {
                         // Prevent items from being taken from these slots
                         return false;
                 }
 
                 @Override
-                public boolean canInsert(ItemStack stack) {
+                public boolean mayPlace(ItemStack stack) {
                         // Prevent items from being inserted into these slots
                         return false;
                 }
 
                 @Override
-                public boolean canBeHighlighted() {
+                public boolean isHighlightable() {
                         // Allow highlighting for visual feedback
                         return true;
                 }
@@ -572,16 +569,16 @@ public class SettingsGui {
          * server-side. Items in virtual slots cannot be moved, taken, or inserted - this is a
          * display-only GUI controlled entirely by the server.
          */
-        public static class SettingsScreenHandler extends GenericContainerScreenHandler {
+        public static class SettingsScreenHandler extends ChestMenu {
 
                 private final SettingsInventory settingsInventory;
-                private final ServerPlayerEntity player;
+                private final ServerPlayer player;
                 // Tracks if changes were confirmed vs cancelled
                 private boolean confirmed = false;
 
                 public SettingsScreenHandler(int syncId, SettingsInventory inventory,
-                                ServerPlayerEntity player) {
-                        super(ScreenHandlerType.GENERIC_9X6, syncId, player.getInventory(),
+                                ServerPlayer player) {
+                        super(MenuType.GENERIC_9x6, syncId, player.getInventory(),
                                         inventory, 6);
                         this.settingsInventory = inventory;
                         this.player = player;
@@ -596,8 +593,7 @@ public class SettingsGui {
                 }
 
                 @Override
-                public void onSlotClick(int slotIndex, int button, SlotActionType actionType,
-                                net.minecraft.entity.player.PlayerEntity clickingPlayer) {
+                public void clicked(int slotIndex, int buttonNum, ContainerInput containerInput, Player player) {
                         // Handle settings GUI slots (works for all game modes including spectator)
                         if (slotIndex < INVENTORY_SIZE && slotIndex >= 0) {
                                 // Handle the settings change (this is a virtual click, not a real
@@ -606,7 +602,7 @@ public class SettingsGui {
 
                                 // Clear cursor on server side - virtual GUI doesn't allow item
                                 // movement
-                                setCursorStack(net.minecraft.item.ItemStack.EMPTY);
+                                setCarried(net.minecraft.world.item.ItemStack.EMPTY);
 
                                 // For spectators, we need to force a complete state sync to avoid
                                 // protocol errors
@@ -616,44 +612,42 @@ public class SettingsGui {
                                 // mode.
                                 // Using updateToClient forces a complete resync with fresh revision
                                 // numbers.
-                                if (clickingPlayer instanceof ServerPlayerEntity serverPlayer
-                                                && serverPlayer.interactionManager
-                                                                .getGameMode() == GameMode.SPECTATOR) {
+                                if (player instanceof ServerPlayer serverPlayer
+                                        && serverPlayer.gameMode
+                                        .getGameModeForPlayer() == GameType.SPECTATOR) {
                                         // Force complete state sync - this sends all slots + cursor
                                         // with fresh revision
                                         ScreenHandlerAccessor accessor =
-                                                        (ScreenHandlerAccessor) this;
+                                                (ScreenHandlerAccessor) this;
                                         accessor.invokeUpdateToClient();
                                 } else {
                                         // For non-spectators, normal content updates work fine
-                                        sendContentUpdates();
+                                        super.broadcastChanges();
                                 }
 
                                 // Don't call parent - this is a virtual GUI, we handle everything
                                 // ourselves
                                 return;
                         }
-
-                        // Delegate player inventory slot clicks (54+) to super for normal behavior
-                        super.onSlotClick(slotIndex, button, actionType, clickingPlayer);
+                        super.clicked(slotIndex, buttonNum, containerInput, player);
                 }
 
                 @Override
-                public ItemStack quickMove(net.minecraft.entity.player.PlayerEntity playerEntity,
+                public ItemStack quickMoveStack(net.minecraft.world.entity.player.Player playerEntity,
                                 int slot) {
                         // Virtual GUI - disable all shift-click transfers
                         return ItemStack.EMPTY;
                 }
 
                 @Override
-                public boolean canInsertIntoSlot(ItemStack stack,
-                                net.minecraft.screen.slot.Slot slot) {
+                public boolean canTakeItemForPickAll(ItemStack stack,
+                                net.minecraft.world.inventory.Slot slot) {
                         // Virtual GUI - prevent any item insertion into virtual slots
-                        if (slot.inventory == settingsInventory) {
+                        if (slot.container == settingsInventory) {
                                 return false;
                         }
                         // Allow normal player inventory interactions
-                        return super.canInsertIntoSlot(stack, slot);
+                        return super.canTakeItemForPickAll(stack, slot);
                 }
 
                 private void handleSettingsClick(int slotIndex) {
@@ -702,14 +696,14 @@ public class SettingsGui {
                                                 }
 
                                                 // Broadcast changes to all players
-                                                broadcastChanges();
+                                                announceSettingsToChat();
 
-                                                player.closeHandledScreen();
+                                                player.closeContainer();
                                                 playConfirmSound();
                                         } else {
-                                                player.sendMessage(RunManager.formatMessage(
-                                                                "No changes to save."), false);
-                                                player.closeHandledScreen();
+                                                player.sendSystemMessage(RunManager.formatMessage(
+                                                                "No changes to save."));
+                                                player.closeContainer();
                                         }
                                 }
                         }
@@ -718,7 +712,9 @@ public class SettingsGui {
                 /**
                  * Broadcasts the settings changes to all players in chat.
                  */
-                private void broadcastChanges() {
+
+                public void announceSettingsToChat() {
+                        if (!settingsInventory.hasChanges()) return;
                         RunManager runManager = RunManager.getInstance();
                         if (runManager == null)
                                 return;
@@ -731,116 +727,116 @@ public class SettingsGui {
                         String playerName = player.getName().getString();
 
                         // Header message
-                        Text headerMsg = Text.empty().append(RunManager.getPrefix())
-                                        .append(Text.literal(playerName)
-                                                        .formatted(Formatting.WHITE))
-                                        .append(Text.literal(" changed settings:")
-                                                        .formatted(Formatting.GRAY));
-                        server.getPlayerManager().broadcast(headerMsg, false);
+                        Component headerMsg = Component.empty().append(RunManager.getPrefix())
+                                        .append(Component.literal(playerName)
+                                                        .withStyle(ChatFormatting.WHITE))
+                                        .append(Component.literal(" changed settings:")
+                                                        .withStyle(ChatFormatting.GRAY));
+                        server.getPlayerList().broadcastSystemMessage(headerMsg, false);
 
                         // List each change
                         if (settingsInventory.getPendingDifficulty() != orig.difficulty()) {
                                 String oldDiff = getDifficultyName(orig.difficulty());
                                 String newDiff = getDifficultyName(
                                                 settingsInventory.getPendingDifficulty());
-                                Text changeMsg = Text.empty().append(RunManager.getPrefix())
-                                                .append(Text.literal("  • Difficulty: ")
+                                Component changeMsg = Component.empty().append(RunManager.getPrefix())
+                                                .append(Component.literal("  • Difficulty: ")
                                                                 .setStyle(Style.EMPTY
                                                                                 .withItalic(false)
-                                                                                .withFormatting(Formatting.GRAY)))
-                                                .append(Text.literal(oldDiff).setStyle(Style.EMPTY
+                                                                                .applyFormat(ChatFormatting.GRAY)))
+                                                .append(Component.literal(oldDiff).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.RED)))
-                                                .append(Text.literal(" → ").setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.RED)))
+                                                .append(Component.literal(" → ").setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.DARK_GRAY)))
-                                                .append(Text.literal(newDiff).setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.DARK_GRAY)))
+                                                .append(Component.literal(newDiff).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.GREEN)));
-                                server.getPlayerManager().broadcast(changeMsg, false);
+                                                                .applyFormat(ChatFormatting.GREEN)));
+                                server.getPlayerList().broadcastSystemMessage(changeMsg, false);
                         }
 
                         if (settingsInventory.isPendingHalfHeart() != orig.halfHeartMode()) {
                                 String oldVal = orig.halfHeartMode() ? "ON" : "OFF";
                                 String newVal = settingsInventory.isPendingHalfHeart() ? "ON"
                                                 : "OFF";
-                                Text changeMsg = Text.empty().append(RunManager.getPrefix())
-                                                .append(Text.literal("  • Half Heart Mode: ")
+                                Component changeMsg = Component.empty().append(RunManager.getPrefix())
+                                                .append(Component.literal("  • Half Heart Mode: ")
                                                                 .setStyle(Style.EMPTY
                                                                                 .withItalic(false)
-                                                                                .withFormatting(Formatting.GRAY)))
-                                                .append(Text.literal(oldVal).setStyle(Style.EMPTY
+                                                                                .applyFormat(ChatFormatting.GRAY)))
+                                                .append(Component.literal(oldVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.RED)))
-                                                .append(Text.literal(" → ").setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.RED)))
+                                                .append(Component.literal(" → ").setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.DARK_GRAY)))
-                                                .append(Text.literal(newVal).setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.DARK_GRAY)))
+                                                .append(Component.literal(newVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.GREEN)));
-                                server.getPlayerManager().broadcast(changeMsg, false);
+                                                                .applyFormat(ChatFormatting.GREEN)));
+                                server.getPlayerList().broadcastSystemMessage(changeMsg, false);
                         }
 
                         if (settingsInventory.isPendingSharedPotions() != orig.sharedPotions()) {
                                 String oldVal = orig.sharedPotions() ? "ON" : "OFF";
                                 String newVal = settingsInventory.isPendingSharedPotions() ? "ON"
                                                 : "OFF";
-                                Text changeMsg = Text.empty().append(RunManager.getPrefix())
-                                                .append(Text.literal("  • Shared Potions: ")
+                                Component changeMsg = Component.empty().append(RunManager.getPrefix())
+                                                .append(Component.literal("  • Shared Potions: ")
                                                                 .setStyle(Style.EMPTY
                                                                                 .withItalic(false)
-                                                                                .withFormatting(Formatting.GRAY)))
-                                                .append(Text.literal(oldVal).setStyle(Style.EMPTY
+                                                                                .applyFormat(ChatFormatting.GRAY)))
+                                                .append(Component.literal(oldVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.RED)))
-                                                .append(Text.literal(" → ").setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.RED)))
+                                                .append(Component.literal(" → ").setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.DARK_GRAY)))
-                                                .append(Text.literal(newVal).setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.DARK_GRAY)))
+                                                .append(Component.literal(newVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.GREEN)));
-                                server.getPlayerManager().broadcast(changeMsg, false);
+                                                                .applyFormat(ChatFormatting.GREEN)));
+                                server.getPlayerList().broadcastSystemMessage(changeMsg, false);
                         }
 
                         if (settingsInventory.isPendingSharedJumping() != orig.sharedJumping()) {
                                 String oldVal = orig.sharedJumping() ? "ON" : "OFF";
                                 String newVal = settingsInventory.isPendingSharedJumping() ? "ON"
                                                 : "OFF";
-                                Text changeMsg = Text.empty().append(RunManager.getPrefix())
-                                                .append(Text.literal("  • Shared Jumping: ")
+                                Component changeMsg = Component.empty().append(RunManager.getPrefix())
+                                                .append(Component.literal("  • Shared Jumping: ")
                                                                 .setStyle(Style.EMPTY
                                                                                 .withItalic(false)
-                                                                                .withFormatting(Formatting.GRAY)))
-                                                .append(Text.literal(oldVal).setStyle(Style.EMPTY
+                                                                                .applyFormat(ChatFormatting.GRAY)))
+                                                .append(Component.literal(oldVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.RED)))
-                                                .append(Text.literal(" → ").setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.RED)))
+                                                .append(Component.literal(" → ").setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.DARK_GRAY)))
-                                                .append(Text.literal(newVal).setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.DARK_GRAY)))
+                                                .append(Component.literal(newVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.GREEN)));
-                                server.getPlayerManager().broadcast(changeMsg, false);
+                                                                .applyFormat(ChatFormatting.GREEN)));
+                                server.getPlayerList().broadcastSystemMessage(changeMsg, false);
                         }
 
                         if (settingsInventory.isPendingManhunt() != orig.manhuntMode()) {
                                 String oldVal = orig.manhuntMode() ? "ON" : "OFF";
                                 String newVal = settingsInventory.isPendingManhunt() ? "ON" : "OFF";
-                                Text changeMsg = Text.empty().append(RunManager.getPrefix())
-                                                .append(Text.literal("  • Manhunt Mode: ")
+                                Component changeMsg = Component.empty().append(RunManager.getPrefix())
+                                                .append(Component.literal("  • Manhunt Mode: ")
                                                                 .setStyle(Style.EMPTY
                                                                                 .withItalic(false)
-                                                                                .withFormatting(Formatting.GRAY)))
-                                                .append(Text.literal(oldVal).setStyle(Style.EMPTY
+                                                                                .applyFormat(ChatFormatting.GRAY)))
+                                                .append(Component.literal(oldVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.RED)))
-                                                .append(Text.literal(" → ").setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.RED)))
+                                                .append(Component.literal(" → ").setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.DARK_GRAY)))
-                                                .append(Text.literal(newVal).setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.DARK_GRAY)))
+                                                .append(Component.literal(newVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.GREEN)));
-                                server.getPlayerManager().broadcast(changeMsg, false);
+                                                                .applyFormat(ChatFormatting.GREEN)));
+                                server.getPlayerList().broadcastSystemMessage(changeMsg, false);
                         }
 
                         if (settingsInventory.isPendingSyncedInventory() != orig
@@ -848,28 +844,28 @@ public class SettingsGui {
                                 String oldVal = orig.syncedInventory() ? "ON" : "OFF";
                                 String newVal = settingsInventory.isPendingSyncedInventory() ? "ON"
                                                 : "OFF";
-                                Text changeMsg = Text.empty().append(RunManager.getPrefix())
-                                                .append(Text.literal("  • Synced Inventory: ")
+                                Component changeMsg = Component.empty().append(RunManager.getPrefix())
+                                                .append(Component.literal("  • Synced Inventory: ")
                                                                 .setStyle(Style.EMPTY
                                                                                 .withItalic(false)
-                                                                                .withFormatting(Formatting.GRAY)))
-                                                .append(Text.literal(oldVal).setStyle(Style.EMPTY
+                                                                                .applyFormat(ChatFormatting.GRAY)))
+                                                .append(Component.literal(oldVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.RED)))
-                                                .append(Text.literal(" → ").setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.RED)))
+                                                .append(Component.literal(" → ").setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.DARK_GRAY)))
-                                                .append(Text.literal(newVal).setStyle(Style.EMPTY
+                                                                .applyFormat(ChatFormatting.DARK_GRAY)))
+                                                .append(Component.literal(newVal).setStyle(Style.EMPTY
                                                                 .withItalic(false)
-                                                                .withFormatting(Formatting.GREEN)));
-                                server.getPlayerManager().broadcast(changeMsg, false);
+                                                                .applyFormat(ChatFormatting.GREEN)));
+                                server.getPlayerList().broadcastSystemMessage(changeMsg, false);
                         }
 
                         // Footer message
-                        Text footerMsg = Text.empty().append(RunManager.getPrefix())
-                                        .append(Text.literal("Changes will apply on next run.")
-                                                        .formatted(Formatting.YELLOW));
-                        server.getPlayerManager().broadcast(footerMsg, false);
+                        Component footerMsg = Component.empty().append(RunManager.getPrefix())
+                                        .append(Component.literal("Changes will apply on next run.")
+                                                        .withStyle(ChatFormatting.YELLOW));
+                        server.getPlayerList().broadcastSystemMessage(footerMsg, false);
                 }
 
                 private String getDifficultyName(Difficulty difficulty) {
@@ -877,40 +873,39 @@ public class SettingsGui {
                 }
 
                 private void playClickSound() {
-                        player.networkHandler.sendPacket(
-                                        new net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket(
-                                                        net.minecraft.sound.SoundEvents.UI_BUTTON_CLICK,
-                                                        net.minecraft.sound.SoundCategory.MASTER,
+                        player.connection.send(
+                                        new net.minecraft.network.protocol.game.ClientboundSoundPacket(
+                                                        net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK,
+                                                        net.minecraft.sounds.SoundSource.MASTER,
                                                         player.getX(), player.getY(), player.getZ(),
                                                         0.5f, 1.0f, player.getRandom().nextLong()));
                 }
 
                 private void playConfirmSound() {
-                        player.networkHandler.sendPacket(
-                                        new net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket(
-                                                        net.minecraft.registry.Registries.SOUND_EVENT
-                                                                        .getEntry(net.minecraft.sound.SoundEvents.ENTITY_PLAYER_LEVELUP),
-                                                        net.minecraft.sound.SoundCategory.MASTER,
+                        player.connection.send(
+                                        new net.minecraft.network.protocol.game.ClientboundSoundPacket(
+                                                        net.minecraft.core.registries.BuiltInRegistries.SOUND_EVENT
+                                                                        .wrapAsHolder(net.minecraft.sounds.SoundEvents.PLAYER_LEVELUP),
+                                                        net.minecraft.sounds.SoundSource.MASTER,
                                                         player.getX(), player.getY(), player.getZ(),
                                                         0.5f, 1.0f, player.getRandom().nextLong()));
                 }
 
 
                 @Override
-                public void onClosed(net.minecraft.entity.player.PlayerEntity closingPlayer) {
-                        super.onClosed(closingPlayer);
+                public void removed(net.minecraft.world.entity.player.Player closingPlayer) {
+                        super.removed(closingPlayer);
 
                         // If closed without confirming and there were changes, notify player
                         if (!confirmed && settingsInventory.hasChanges()) {
-                                player.sendMessage(
+                                player.sendSystemMessage(
                                                 RunManager.formatMessage(
-                                                                "Chaos mode changes discarded."),
-                                                false);
+                                                                "Chaos mode changes discarded."));
                         }
                 }
 
                 @Override
-                public boolean canUse(net.minecraft.entity.player.PlayerEntity playerEntity) {
+                public boolean stillValid(net.minecraft.world.entity.player.Player playerEntity) {
                         return true;
                 }
         }

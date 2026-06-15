@@ -1,18 +1,22 @@
 package net.zenzty.soullink.server.run;
 
 import java.util.Random;
-import net.minecraft.registry.RegistryKey;
+
+import net.minecraft.core.Holder;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.World;
-import net.minecraft.world.dimension.DimensionTypes;
-import net.minecraft.world.rule.GameRules;
+import net.minecraft.world.clock.ServerClockManager;
+import net.minecraft.world.clock.WorldClock;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
+import net.minecraft.world.level.gamerules.GameRules;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.server.settings.Settings;
 import xyz.nucleoid.fantasy.Fantasy;
-import xyz.nucleoid.fantasy.RuntimeWorldConfig;
-import xyz.nucleoid.fantasy.RuntimeWorldHandle;
+import xyz.nucleoid.fantasy.RuntimeLevelConfig;
+import xyz.nucleoid.fantasy.RuntimeLevelHandle;
 
 /**
  * Manages the lifecycle of temporary Fantasy worlds for speedruns. Handles creation, deletion, and
@@ -24,14 +28,14 @@ public class WorldService {
     private final Fantasy fantasy;
 
     // Temporary world handles
-    private RuntimeWorldHandle overworldHandle;
-    private RuntimeWorldHandle netherHandle;
-    private RuntimeWorldHandle endHandle;
+    private RuntimeLevelHandle overworldHandle;
+    private RuntimeLevelHandle netherHandle;
+    private RuntimeLevelHandle endHandle;
 
     // Old world handles (to delete after teleporting to new world)
-    private RuntimeWorldHandle oldOverworldHandle;
-    private RuntimeWorldHandle oldNetherHandle;
-    private RuntimeWorldHandle oldEndHandle;
+    private RuntimeLevelHandle oldOverworldHandle;
+    private RuntimeLevelHandle oldNetherHandle;
+    private RuntimeLevelHandle oldEndHandle;
 
     // Current run seed
     private long currentSeed;
@@ -54,41 +58,46 @@ public class WorldService {
         Difficulty serverDifficulty = Settings.getInstance().getDifficulty();
 
         // Create temporary Overworld
-        ServerWorld vanillaOverworld = server.getOverworld();
-        RuntimeWorldConfig overworldConfig = new RuntimeWorldConfig()
-                .setDimensionType(DimensionTypes.OVERWORLD).setDifficulty(serverDifficulty)
+        ServerLevel vanillaOverworld = server.overworld();
+        RuntimeLevelConfig overworldConfig = new RuntimeLevelConfig()
+                .setDimensionType(BuiltinDimensionTypes.OVERWORLD).setDifficulty(serverDifficulty)
                 .setGameRule(GameRules.ADVANCE_TIME, true).setSeed(currentSeed)
-                .setGenerator(vanillaOverworld.getChunkManager().getChunkGenerator());
+                .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
 
-        overworldHandle = fantasy.openTemporaryWorld(overworldConfig);
-        overworldHandle.asWorld().setTimeOfDay(0);
+        overworldHandle = fantasy.openTemporaryLevel(overworldConfig);
+        ServerLevel tempWorld = overworldHandle.asLevel();
+        ServerClockManager clockManager = tempWorld.getServer().clockManager();
+        Holder<WorldClock> clock = tempWorld.dimensionTypeRegistration().value().defaultClock().orElseThrow();
+
+        // Set time to 0 (day)
+        clockManager.setTotalTicks(clock, 0L);
         SoulLink.LOGGER.info("Created temporary overworld: {}",
-                overworldHandle.getRegistryKey().getValue());
+                overworldHandle.getRegistryKey().identifier());
 
         // Create temporary Nether
-        ServerWorld vanillaNether = server.getWorld(World.NETHER);
+        ServerLevel vanillaNether = server.getLevel(Level.NETHER);
         if (vanillaNether != null) {
-            RuntimeWorldConfig netherConfig =
-                    new RuntimeWorldConfig().setDimensionType(DimensionTypes.THE_NETHER)
+            RuntimeLevelConfig netherConfig =
+                    new RuntimeLevelConfig().setDimensionType(BuiltinDimensionTypes.NETHER)
                             .setDifficulty(serverDifficulty).setSeed(currentSeed)
-                            .setGenerator(vanillaNether.getChunkManager().getChunkGenerator());
+                            .setGenerator(vanillaNether.getChunkSource().getGenerator());
 
-            netherHandle = fantasy.openTemporaryWorld(netherConfig);
+            netherHandle = fantasy.openTemporaryLevel(netherConfig);
             SoulLink.LOGGER.info("Created temporary nether: {}",
-                    netherHandle.getRegistryKey().getValue());
+                    netherHandle.getRegistryKey().identifier());
         }
 
         // Create temporary End
-        ServerWorld vanillaEnd = server.getWorld(World.END);
+        ServerLevel vanillaEnd = server.getLevel(Level.END);
         if (vanillaEnd != null) {
-            RuntimeWorldConfig endConfig =
-                    new RuntimeWorldConfig().setDimensionType(DimensionTypes.THE_END)
+            RuntimeLevelConfig endConfig =
+                    new RuntimeLevelConfig().setDimensionType(BuiltinDimensionTypes.END)
                             .setDifficulty(serverDifficulty).setSeed(currentSeed)
-                            .setGenerator(vanillaEnd.getChunkManager().getChunkGenerator());
+                            .setGenerator(vanillaEnd.getChunkSource().getGenerator());
 
-            endHandle = fantasy.openTemporaryWorld(endConfig);
+            endHandle = fantasy.openTemporaryLevel(endConfig);
             SoulLink.LOGGER.info("Created temporary end: {}",
-                    endHandle.getRegistryKey().getValue());
+                    endHandle.getRegistryKey().identifier());
         }
 
         return currentSeed;
@@ -107,7 +116,7 @@ public class WorldService {
         endHandle = null;
     }
 
-    private void safeDeleteWorld(RuntimeWorldHandle handle, String worldName) {
+    private void safeDeleteWorld(RuntimeLevelHandle handle, String worldName) {
         if (handle != null) {
             try {
                 handle.delete();
@@ -149,13 +158,13 @@ public class WorldService {
     /**
      * Checks if a world key belongs to one of our temporary dimensions.
      */
-    public boolean isTemporaryWorld(RegistryKey<World> worldKey) {
+    public boolean isTemporaryWorld(ResourceKey<Level> worldKey) {
         if (worldKey == null)
             return false;
 
-        RegistryKey<World> tempOverworld = getOverworldKey();
-        RegistryKey<World> tempNether = getNetherKey();
-        RegistryKey<World> tempEnd = getEndKey();
+        ResourceKey<Level> tempOverworld = getOverworldKey();
+        ResourceKey<Level> tempNether = getNetherKey();
+        ResourceKey<Level> tempEnd = getEndKey();
 
         return worldKey.equals(tempOverworld) || worldKey.equals(tempNether)
                 || worldKey.equals(tempEnd);
@@ -163,27 +172,27 @@ public class WorldService {
 
     // ==================== GETTERS ====================
 
-    public ServerWorld getOverworld() {
-        return overworldHandle != null ? overworldHandle.asWorld() : null;
+    public ServerLevel getOverworld() {
+        return overworldHandle != null ? overworldHandle.asLevel() : null;
     }
 
-    public ServerWorld getNether() {
-        return netherHandle != null ? netherHandle.asWorld() : null;
+    public ServerLevel getNether() {
+        return netherHandle != null ? netherHandle.asLevel() : null;
     }
 
-    public ServerWorld getEnd() {
-        return endHandle != null ? endHandle.asWorld() : null;
+    public ServerLevel getEnd() {
+        return endHandle != null ? endHandle.asLevel() : null;
     }
 
-    public RegistryKey<World> getOverworldKey() {
+    public ResourceKey<Level> getOverworldKey() {
         return overworldHandle != null ? overworldHandle.getRegistryKey() : null;
     }
 
-    public RegistryKey<World> getNetherKey() {
+    public ResourceKey<Level> getNetherKey() {
         return netherHandle != null ? netherHandle.getRegistryKey() : null;
     }
 
-    public RegistryKey<World> getEndKey() {
+    public ResourceKey<Level> getEndKey() {
         return endHandle != null ? endHandle.getRegistryKey() : null;
     }
 
@@ -194,11 +203,11 @@ public class WorldService {
     /**
      * Gets the linked nether world for portal travel from a given world.
      */
-    public ServerWorld getLinkedNetherWorld(ServerWorld fromWorld) {
+    public ServerLevel getLinkedNetherWorld(ServerLevel fromWorld) {
         if (fromWorld == null)
             return null;
 
-        RegistryKey<World> fromKey = fromWorld.getRegistryKey();
+        ResourceKey<Level> fromKey = fromWorld.dimension();
 
         if (fromKey.equals(getOverworldKey())) {
             return getNether();

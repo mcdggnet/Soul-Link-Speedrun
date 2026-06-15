@@ -2,9 +2,9 @@ package net.zenzty.soullink.server.inventory;
 
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.item.ItemStack;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.item.ItemStack;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.server.manhunt.ManhuntManager;
 import net.zenzty.soullink.server.run.RunManager;
@@ -36,7 +36,7 @@ public class SharedInventoryHandler {
      * Returns whether the given player should participate in shared inventory (same as Soul Link
      * participation: runners in Manhunt, everyone in run otherwise).
      */
-    private static boolean shouldParticipate(ServerPlayerEntity player) {
+    private static boolean shouldParticipate(ServerPlayer player) {
         RunManager runManager;
         try {
             runManager = RunManager.getInstance();
@@ -83,7 +83,7 @@ public class SharedInventoryHandler {
      * Copies the given player's inventory into the master state. Call after the player's inventory
      * has been modified (e.g. after setStack).
      */
-    public static void copyFromPlayer(ServerPlayerEntity player) {
+    public static void copyFromPlayer(ServerPlayer player) {
         if (player == null || player.isRemoved()) {
             return;
         }
@@ -91,11 +91,11 @@ public class SharedInventoryHandler {
         if (inv == null) {
             return;
         }
-        int size = Math.min(inv.size(), PLAYER_INVENTORY_SIZE);
+        int size = Math.min(inv.getContainerSize(), PLAYER_INVENTORY_SIZE);
         synchronized (master) {
             for (int i = 0; i < size; i++) {
                 try {
-                    ItemStack stack = inv.getStack(i);
+                    ItemStack stack = inv.getItem(i);
                     master.set(i,
                             stack == null || stack.isEmpty() ? ItemStack.EMPTY : stack.copy());
                 } catch (Exception e) {
@@ -111,7 +111,7 @@ public class SharedInventoryHandler {
      * Applies the master inventory state to the given player. Does not trigger the setStack mixin
      * when isSyncing is true.
      */
-    public static void applyToPlayer(ServerPlayerEntity player) {
+    public static void applyToPlayer(ServerPlayer player) {
         if (player == null || player.isRemoved()) {
             return;
         }
@@ -119,24 +119,24 @@ public class SharedInventoryHandler {
         if (inv == null) {
             return;
         }
-        int size = Math.min(inv.size(), PLAYER_INVENTORY_SIZE);
+        int size = Math.min(inv.getContainerSize(), PLAYER_INVENTORY_SIZE);
         List<ItemStack> snapshot;
         synchronized (master) {
             snapshot = new ArrayList<>(master);
         }
         for (int i = 0; i < size; i++) {
             try {
-                ItemStack current = inv.getStack(i);
+                ItemStack current = inv.getItem(i);
                 ItemStack target = snapshot.get(i);
                 if (target == null) {
                     target = ItemStack.EMPTY;
                 } else if (!target.isEmpty()) {
                     target = target.copy();
                 }
-                if (ItemStack.areEqual(current, target)) {
+                if (ItemStack.matches(current, target)) {
                     continue;
                 }
-                inv.setStack(i, target);
+                inv.setItem(i, target);
             } catch (Exception e) {
                 SoulLink.LOGGER.warn("Error applying inventory slot {} to player {}: {}", i,
                         player.getName().getString(), e.getMessage());
@@ -149,7 +149,7 @@ public class SharedInventoryHandler {
      * to master and applies it to all other participating players. Prevents duplication by making
      * one source of truth (the changer's state) and overwriting everyone else.
      */
-    public static void syncFromPlayerToAll(ServerPlayerEntity sourcePlayer) {
+    public static void syncFromPlayerToAll(ServerPlayer sourcePlayer) {
         if (isSyncing) {
             return;
         }
@@ -174,7 +174,7 @@ public class SharedInventoryHandler {
         try {
             copyFromPlayer(sourcePlayer);
 
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (player == sourcePlayer) {
                     continue;
                 }
@@ -202,7 +202,7 @@ public class SharedInventoryHandler {
      * Syncs the current master inventory to the given player (e.g. late joiner). Call after
      * teleporting the player into the run.
      */
-    public static void syncPlayerToShared(ServerPlayerEntity player) {
+    public static void syncPlayerToShared(ServerPlayer player) {
         if (!Settings.getInstance().isSyncedInventory()) {
             return;
         }

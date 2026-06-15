@@ -1,9 +1,9 @@
 package net.zenzty.soullink.server.run;
 
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
+import net.minecraft.server.level.ServerPlayer;
 import net.zenzty.soullink.SoulLink;
 
 /**
@@ -40,14 +40,14 @@ public class TimerService {
      *
      * @param player The player to track for input
      */
-    public void beginWaitingForInput(ServerPlayerEntity player) {
+    public void beginWaitingForInput(ServerPlayer player) {
         if (!timerStartedThisRun && !waitingForInput) {
             waitingForInput = true;
-            trackedPlayerId = player.getUuid();
+            trackedPlayerId = player.getUUID();
             trackedX = player.getX();
             trackedZ = player.getZ();
-            trackedYaw = player.getYaw();
-            trackedPitch = player.getPitch();
+            trackedYaw = player.getYRot();
+            trackedPitch = player.getXRot();
         }
     }
 
@@ -94,8 +94,8 @@ public class TimerService {
      * @return true if timer is running, false otherwise
      */
     public boolean tick(MinecraftServer server,
-            java.util.function.Predicate<ServerPlayerEntity> isInRunCheck,
-            java.util.function.Predicate<ServerPlayerEntity> skipActionBarFor) {
+            java.util.function.Predicate<ServerPlayer> isInRunCheck,
+            java.util.function.Predicate<ServerPlayer> skipActionBarFor) {
         // Wait for player input (movement or camera) to start timer
         if (waitingForInput) {
             if (checkForInput(server, isInRunCheck)) {
@@ -108,13 +108,13 @@ public class TimerService {
                 SoulLink.LOGGER.info("Player input detected! Timer started at 00:00:00");
             } else {
                 // Show ready message - timer at 00:00:00 waiting for input
-                if (server.getTicks() % 10 == 0) {
-                    Text readyText = Text.empty()
-                            .append(Text.literal("00:00:00").formatted(Formatting.WHITE))
-                            .append(Text.literal(" - Move to start").formatted(Formatting.GRAY));
-                    for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                if (server.getTickCount() % 10 == 0) {
+                    Component readyText = Component.empty()
+                            .append(Component.literal("00:00:00").withStyle(ChatFormatting.WHITE))
+                            .append(Component.literal(" - Move to start").withStyle(ChatFormatting.GRAY));
+                    for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                         if (isInRunCheck.test(player) && !skipActionBarFor.test(player)) {
-                            player.sendMessage(readyText, true);
+                            player.sendOverlayMessage(readyText);
                         }
                     }
                 }
@@ -127,12 +127,12 @@ public class TimerService {
         }
 
         // Update action bar every 10 ticks (0.5 seconds) for performance
-        if (server.getTicks() % 10 == 0) {
-            Text actionBarText = Text.literal(getFormattedTime()).formatted(Formatting.WHITE);
+        if (server.getTickCount() % 10 == 0) {
+            Component actionBarText = Component.literal(getFormattedTime()).withStyle(ChatFormatting.WHITE);
 
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (isInRunCheck.test(player) && !skipActionBarFor.test(player)) {
-                    player.sendMessage(actionBarText, true);
+                    player.sendOverlayMessage(actionBarText);
                 }
             }
         }
@@ -144,26 +144,26 @@ public class TimerService {
      * Check if the player has moved or looked around to start the timer.
      */
     private boolean checkForInput(MinecraftServer server,
-            java.util.function.Predicate<ServerPlayerEntity> isInRunCheck) {
-        ServerPlayerEntity trackedPlayer = null;
+            java.util.function.Predicate<ServerPlayer> isInRunCheck) {
+        ServerPlayer trackedPlayer = null;
         if (trackedPlayerId != null) {
-            trackedPlayer = server.getPlayerManager().getPlayer(trackedPlayerId);
+            trackedPlayer = server.getPlayerList().getPlayer(trackedPlayerId);
         }
 
-        if (trackedPlayer == null || trackedPlayer.isDisconnected()) {
+        if (trackedPlayer == null || trackedPlayer.hasDisconnected()) {
             // Find a new player to track
-            var players = server.getPlayerManager().getPlayerList().stream().filter(isInRunCheck)
+            var players = server.getPlayerList().getPlayers().stream().filter(isInRunCheck)
                     .toList();
             if (players.isEmpty()) {
                 return false;
             }
             trackedPlayer = players.get(0);
-            trackedPlayerId = trackedPlayer.getUuid();
+            trackedPlayerId = trackedPlayer.getUUID();
             // Re-capture their position
             trackedX = trackedPlayer.getX();
             trackedZ = trackedPlayer.getZ();
-            trackedYaw = trackedPlayer.getYaw();
-            trackedPitch = trackedPlayer.getPitch();
+            trackedYaw = trackedPlayer.getYRot();
+            trackedPitch = trackedPlayer.getXRot();
             return false;
         }
 
@@ -172,8 +172,8 @@ public class TimerService {
         double dz = Math.abs(trackedPlayer.getZ() - trackedZ);
 
         // Check for look direction change
-        float dYaw = Math.abs(trackedPlayer.getYaw() - trackedYaw);
-        float dPitch = Math.abs(trackedPlayer.getPitch() - trackedPitch);
+        float dYaw = Math.abs(trackedPlayer.getYRot() - trackedYaw);
+        float dPitch = Math.abs(trackedPlayer.getXRot() - trackedPitch);
 
         // Handle yaw wrapping (e.g., 359 to 1 degrees)
         if (dYaw > 180) {

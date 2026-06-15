@@ -5,13 +5,13 @@ import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.network.ServerPlayerInteractionManager;
-import net.minecraft.util.ActionResult;
-import net.minecraft.util.Hand;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.world.World;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.server.level.ServerPlayerGameMode;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
 import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
 
 /**
@@ -19,15 +19,15 @@ import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
  * block placement and other interactions that consume items (like using bone meal) which bypass the
  * normal inventory hooks.
  */
-@Mixin(ServerPlayerInteractionManager.class)
+@Mixin(ServerPlayerGameMode.class)
 public abstract class ServerPlayerInteractionManagerMixin {
 
     @Shadow
-    public ServerPlayerEntity player;
+    public ServerPlayer player;
 
-    @Inject(method = "interactBlock", at = @At("RETURN"))
-    private void afterInteractBlock(ServerPlayerEntity player, World world, ItemStack stack,
-            Hand hand, BlockHitResult hitResult, CallbackInfoReturnable<ActionResult> cir) {
+    @Inject(method = "useItemOn", at = @At("RETURN"))
+    private void afterInteractBlock(ServerPlayer player, Level world, ItemStack stack,
+            InteractionHand hand, BlockHitResult hitResult, CallbackInfoReturnable<InteractionResult> cir) {
         if (SharedInventoryHandler.isSyncing()) {
             return;
         }
@@ -38,9 +38,9 @@ public abstract class ServerPlayerInteractionManagerMixin {
         SharedInventoryHandler.syncFromPlayerToAll(player);
     }
 
-    @Inject(method = "interactItem", at = @At("RETURN"))
-    private void afterInteractItem(ServerPlayerEntity player, World world, ItemStack stack,
-            Hand hand, CallbackInfoReturnable<ActionResult> cir) {
+    @Inject(method = "useItem", at = @At("RETURN"))
+    private void afterInteractItem(ServerPlayer player, Level world, ItemStack stack,
+            InteractionHand hand, CallbackInfoReturnable<InteractionResult> cir) {
         if (SharedInventoryHandler.isSyncing()) {
             return;
         }

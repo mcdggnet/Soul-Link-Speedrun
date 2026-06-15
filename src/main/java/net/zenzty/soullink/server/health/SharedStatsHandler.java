@@ -2,13 +2,13 @@ package net.zenzty.soullink.server.health;
 
 import java.util.List;
 import java.util.Locale;
-import net.minecraft.entity.damage.DamageSource;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.Mth;
+import net.minecraft.world.damagesource.DamageSource;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.server.manhunt.ManhuntManager;
 import net.zenzty.soullink.server.run.RunManager;
@@ -57,7 +57,7 @@ public class SharedStatsHandler {
      * @param player the player to check
      * @return true if the player should share health, hunger, and related stats
      */
-    private static boolean shouldParticipateInSoulLink(ServerPlayerEntity player) {
+    private static boolean shouldParticipateInSoulLink(ServerPlayer player) {
         RunManager runManager;
         try {
             runManager = RunManager.getInstance();
@@ -100,7 +100,7 @@ public class SharedStatsHandler {
      * Syncs a player's stats to the current shared values. Used for late joiners and reconnecting
      * players.
      */
-    public static void syncPlayerToSharedStats(ServerPlayerEntity player) {
+    public static void syncPlayerToSharedStats(ServerPlayer player) {
         if (isSyncing)
             return;
 
@@ -108,8 +108,8 @@ public class SharedStatsHandler {
         try {
             player.setHealth(sharedHealth);
             player.setAbsorptionAmount(sharedAbsorption);
-            player.getHungerManager().setFoodLevel(sharedHunger);
-            player.getHungerManager().setSaturationLevel(sharedSaturation);
+            player.getFoodData().setFoodLevel(sharedHunger);
+            player.getFoodData().setSaturation(sharedSaturation);
             SoulLink.LOGGER.debug(
                     "Synced {} to shared stats: HP={}, Absorption={}, Food={}, Sat={}",
                     player.getName().getString(), sharedHealth, sharedAbsorption, sharedHunger,
@@ -123,8 +123,8 @@ public class SharedStatsHandler {
      * Gets the ServerWorld for a player. In Yarn 1.21.11, ServerPlayerEntity.getEntityWorld()
      * returns ServerWorld directly.
      */
-    private static ServerWorld getPlayerWorld(ServerPlayerEntity player) {
-        return player.getEntityWorld();
+    private static ServerLevel getPlayerWorld(ServerPlayer player) {
+        return player.level();
     }
 
     /**
@@ -135,7 +135,7 @@ public class SharedStatsHandler {
      * @param newHealth The player's health AFTER damage was applied (armor already calculated)
      * @param damageSource The source of the damage
      */
-    public static void onPlayerHealthChanged(ServerPlayerEntity damagedPlayer, float newHealth,
+    public static void onPlayerHealthChanged(ServerPlayer damagedPlayer, float newHealth,
             DamageSource damageSource) {
         if (isSyncing)
             return;
@@ -146,11 +146,11 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(damagedPlayer);
+        ServerLevel playerWorld = getPlayerWorld(damagedPlayer);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         isSyncing = true;
@@ -160,14 +160,14 @@ public class SharedStatsHandler {
 
             // Handle periodic damage (Poison/Wither) - normalize by player count
             // Without this, N players poisoned = Nx damage speed
-            String damageType = damageSource.getName();
+            String damageType = damageSource.getMsgId();
             if (damageType.equals("poison") || damageType.equals("wither")) {
                 handlePeriodicDamage(damagedPlayer, currentDamageAmount);
                 return;
             }
 
             // Update the master health to match the damaged player's health
-            sharedHealth = MathHelper.clamp(newHealth, 0.0f, getMaxHealth());
+            sharedHealth = Mth.clamp(newHealth, 0.0f, getMaxHealth());
 
             // Check for death condition
             if (sharedHealth <= 0) {
@@ -183,7 +183,7 @@ public class SharedStatsHandler {
                     return;
 
                 float syncedDamageAmount = oldHealth - sharedHealth;
-                List<ServerPlayerEntity> players = server.getPlayerManager().getPlayerList();
+                List<ServerPlayer> players = server.getPlayerList().getPlayers();
 
                 // Broadcast damage notification to all players (if combat log is enabled)
                 if (Settings.getInstance().isDamageLogEnabled()) {
@@ -193,36 +193,36 @@ public class SharedStatsHandler {
                     float damageInHearts = syncedDamageAmount / 2.0f;
                     float roundedDamage = Math.max(0.5f, Math.round(damageInHearts * 2.0f) / 2.0f);
                     String damageText = String.format(Locale.US, "%.1f", roundedDamage);
-                    Text damageNotification = Text.empty().append(RunManager.getPrefix())
-                            .append(Text.literal(damagedPlayer.getName().getString())
-                                    .formatted(Formatting.WHITE))
-                            .append(Text.literal(" has taken ").formatted(Formatting.GRAY))
-                            .append(Text.literal(damageText + " ❤").formatted(Formatting.RED))
-                            .append(Text.literal(" damage.").formatted(Formatting.GRAY));
-                    server.getPlayerManager().broadcast(damageNotification, false);
+                    Component damageNotification = Component.empty().append(RunManager.getPrefix())
+                            .append(Component.literal(damagedPlayer.getName().getString())
+                                    .withStyle(ChatFormatting.WHITE))
+                            .append(Component.literal(" has taken ").withStyle(ChatFormatting.GRAY))
+                            .append(Component.literal(damageText + " ❤").withStyle(ChatFormatting.RED))
+                            .append(Component.literal(" damage.").withStyle(ChatFormatting.GRAY));
+                    server.getPlayerList().broadcastSystemMessage(damageNotification, false);
                 }
 
-                for (ServerPlayerEntity player : players) {
+                for (ServerPlayer player : players) {
                     if (player == damagedPlayer || player.isSpectator() || player.isCreative())
                         continue;
                     if (!shouldParticipateInSoulLink(player))
                         continue;
 
-                    ServerWorld otherWorld = getPlayerWorld(player);
+                    ServerLevel otherWorld = getPlayerWorld(player);
                     if (otherWorld == null)
                         continue;
 
-                    if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                    if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                         continue;
 
                     // Apply actual damage to trigger all client-side effects (red flash, screen
                     // shake, sound)
                     // Use the world's damage sources for correct API usage
-                    DamageSource syncDamage = otherWorld.getDamageSources().generic();
+                    DamageSource syncDamage = otherWorld.damageSources().generic();
 
                     // Apply damage using the world-aware damage method
                     // The isSyncing flag prevents onPlayerHealthChanged from recursing
-                    player.damage(otherWorld, syncDamage, syncedDamageAmount);
+                    player.hurtServer(otherWorld, syncDamage, syncedDamageAmount);
 
                     // Safety check: if player "died" due to local damage but shared health remains,
                     // restore them
@@ -247,18 +247,18 @@ public class SharedStatsHandler {
      * Handles periodic damage (Poison/Wither) by normalizing it by player count and using an
      * accumulator.
      */
-    private static void handlePeriodicDamage(ServerPlayerEntity damagedPlayer, float damageAmount) {
+    private static void handlePeriodicDamage(ServerPlayer damagedPlayer, float damageAmount) {
         RunManager runManager = RunManager.getInstance();
         MinecraftServer server = runManager.getServer();
         if (server == null)
             return;
 
         int playerCount = 0;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player))
                 continue;
-            ServerWorld world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.getRegistryKey())) {
+            ServerLevel world = getPlayerWorld(player);
+            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -280,14 +280,14 @@ public class SharedStatsHandler {
             damageAccumulator = 0.0f;
 
             float oldHealth = sharedHealth;
-            sharedHealth = MathHelper.clamp(sharedHealth - damageToApply, 0.0f, getMaxHealth());
+            sharedHealth = Mth.clamp(sharedHealth - damageToApply, 0.0f, getMaxHealth());
 
             // Sync to all players
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (!shouldParticipateInSoulLink(player))
                     continue;
-                ServerWorld otherWorld = getPlayerWorld(player);
-                if (otherWorld == null || !runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                ServerLevel otherWorld = getPlayerWorld(player);
+                if (otherWorld == null || !runManager.isTemporaryWorld(otherWorld.dimension()))
                     continue;
 
                 player.setHealth(sharedHealth);
@@ -312,7 +312,7 @@ public class SharedStatsHandler {
      * Note: Regeneration effect healing is handled separately by onRegenerationHeal() to normalize
      * by player count.
      */
-    public static void onPlayerHealed(ServerPlayerEntity healedPlayer, float newHealth) {
+    public static void onPlayerHealed(ServerPlayer healedPlayer, float newHealth) {
         if (isSyncing)
             return;
         if (!shouldParticipateInSoulLink(healedPlayer))
@@ -322,24 +322,24 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(healedPlayer);
+        ServerLevel playerWorld = getPlayerWorld(healedPlayer);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         isSyncing = true;
         try {
             float oldHealth = sharedHealth;
-            sharedHealth = MathHelper.clamp(newHealth, 0.0f, getMaxHealth());
+            sharedHealth = Mth.clamp(newHealth, 0.0f, getMaxHealth());
 
             if (sharedHealth > oldHealth) {
                 MinecraftServer server = runManager.getServer();
                 if (server == null)
                     return;
 
-                for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                     if (player == healedPlayer)
                         continue;
                     if (player.isSpectator() || player.isCreative())
@@ -350,11 +350,11 @@ public class SharedStatsHandler {
                     if (player.isSpectator() || player.isCreative())
                         continue;
 
-                    ServerWorld otherWorld = getPlayerWorld(player);
+                    ServerLevel otherWorld = getPlayerWorld(player);
                     if (otherWorld == null)
                         continue;
 
-                    if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                    if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                         continue;
 
                     player.setHealth(sharedHealth);
@@ -375,7 +375,7 @@ public class SharedStatsHandler {
      * Without this, N players with regeneration = Nx healing speed since each player's regen would
      * stack.
      */
-    public static void onRegenerationHeal(ServerPlayerEntity regenPlayer, float healAmount) {
+    public static void onRegenerationHeal(ServerPlayer regenPlayer, float healAmount) {
         if (isSyncing)
             return;
         if (!shouldParticipateInSoulLink(regenPlayer))
@@ -385,11 +385,11 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(regenPlayer);
+        ServerLevel playerWorld = getPlayerWorld(regenPlayer);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         MinecraftServer server = runManager.getServer();
@@ -397,11 +397,11 @@ public class SharedStatsHandler {
             return;
 
         int playerCount = 0;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player))
                 continue;
-            ServerWorld world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.getRegistryKey())) {
+            ServerLevel world = getPlayerWorld(player);
+            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -427,18 +427,18 @@ public class SharedStatsHandler {
             isSyncing = true;
             try {
                 float oldHealth = sharedHealth;
-                sharedHealth = MathHelper.clamp(sharedHealth + healToApply, 0.0f, getMaxHealth());
+                sharedHealth = Mth.clamp(sharedHealth + healToApply, 0.0f, getMaxHealth());
 
                 if (sharedHealth > oldHealth) {
                     // Sync to all players
-                    for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                    for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                         if (!shouldParticipateInSoulLink(player))
                             continue;
-                        ServerWorld otherWorld = getPlayerWorld(player);
+                        ServerLevel otherWorld = getPlayerWorld(player);
                         if (otherWorld == null)
                             continue;
 
-                        if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                        if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                             continue;
 
                         player.setHealth(sharedHealth);
@@ -461,7 +461,7 @@ public class SharedStatsHandler {
      * Called when a player's absorption amount changes (from golden apples, etc). Updates the
      * master absorption and syncs to all other players.
      */
-    public static void onAbsorptionChanged(ServerPlayerEntity changedPlayer, float newAbsorption) {
+    public static void onAbsorptionChanged(ServerPlayer changedPlayer, float newAbsorption) {
         if (isSyncing)
             return;
         if (!shouldParticipateInSoulLink(changedPlayer))
@@ -471,11 +471,11 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(changedPlayer);
+        ServerLevel playerWorld = getPlayerWorld(changedPlayer);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         if (Math.abs(newAbsorption - sharedAbsorption) < 0.1f)
@@ -484,23 +484,23 @@ public class SharedStatsHandler {
         isSyncing = true;
         try {
             float oldAbsorption = sharedAbsorption;
-            sharedAbsorption = MathHelper.clamp(newAbsorption, 0.0f, 20.0f);
+            sharedAbsorption = Mth.clamp(newAbsorption, 0.0f, 20.0f);
 
             MinecraftServer server = runManager.getServer();
             if (server == null)
                 return;
 
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (player == changedPlayer)
                     continue;
                 if (!shouldParticipateInSoulLink(player))
                     continue;
 
-                ServerWorld otherWorld = getPlayerWorld(player);
+                ServerLevel otherWorld = getPlayerWorld(player);
                 if (otherWorld == null)
                     continue;
 
-                if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                     continue;
 
                 player.setAbsorptionAmount(sharedAbsorption);
@@ -520,7 +520,7 @@ public class SharedStatsHandler {
      * 
      * Without this, N players = Nx regen speed since each player's regen would stack.
      */
-    public static void onNaturalRegen(ServerPlayerEntity regenPlayer, float healAmount) {
+    public static void onNaturalRegen(ServerPlayer regenPlayer, float healAmount) {
         if (isSyncing)
             return;
         if (!shouldParticipateInSoulLink(regenPlayer))
@@ -530,11 +530,11 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(regenPlayer);
+        ServerLevel playerWorld = getPlayerWorld(regenPlayer);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         MinecraftServer server = runManager.getServer();
@@ -542,11 +542,11 @@ public class SharedStatsHandler {
             return;
 
         int playerCount = 0;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player))
                 continue;
-            ServerWorld world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.getRegistryKey())) {
+            ServerLevel world = getPlayerWorld(player);
+            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -572,18 +572,18 @@ public class SharedStatsHandler {
             isSyncing = true;
             try {
                 float oldHealth = sharedHealth;
-                sharedHealth = MathHelper.clamp(sharedHealth + healToApply, 0.0f, getMaxHealth());
+                sharedHealth = Mth.clamp(sharedHealth + healToApply, 0.0f, getMaxHealth());
 
                 if (sharedHealth > oldHealth) {
                     // Sync to all players
-                    for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                    for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                         if (!shouldParticipateInSoulLink(player))
                             continue;
-                        ServerWorld otherWorld = getPlayerWorld(player);
+                        ServerLevel otherWorld = getPlayerWorld(player);
                         if (otherWorld == null)
                             continue;
 
-                        if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                        if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                             continue;
 
                         player.setHealth(sharedHealth);
@@ -602,7 +602,7 @@ public class SharedStatsHandler {
     /**
      * Called when a player's hunger changes. Updates master values and syncs to all other players.
      */
-    public static void onPlayerHungerChanged(ServerPlayerEntity player, int newFoodLevel,
+    public static void onPlayerHungerChanged(ServerPlayer player, int newFoodLevel,
             float newSaturation) {
         if (isSyncing)
             return;
@@ -613,11 +613,11 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(player);
+        ServerLevel playerWorld = getPlayerWorld(player);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         isSyncing = true;
@@ -629,28 +629,28 @@ public class SharedStatsHandler {
                 return;
             }
 
-            sharedHunger = MathHelper.clamp(newFoodLevel, 0, 20);
-            sharedSaturation = MathHelper.clamp(newSaturation, 0.0f, 20.0f);
+            sharedHunger = Mth.clamp(newFoodLevel, 0, 20);
+            sharedSaturation = Mth.clamp(newSaturation, 0.0f, 20.0f);
 
             MinecraftServer server = runManager.getServer();
             if (server == null)
                 return;
 
-            for (ServerPlayerEntity otherPlayer : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer otherPlayer : server.getPlayerList().getPlayers()) {
                 if (otherPlayer == player)
                     continue;
                 if (!shouldParticipateInSoulLink(otherPlayer))
                     continue;
 
-                ServerWorld otherWorld = getPlayerWorld(otherPlayer);
+                ServerLevel otherWorld = getPlayerWorld(otherPlayer);
                 if (otherWorld == null)
                     continue;
 
-                if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                     continue;
 
-                otherPlayer.getHungerManager().setFoodLevel(sharedHunger);
-                otherPlayer.getHungerManager().setSaturationLevel(sharedSaturation);
+                otherPlayer.getFoodData().setFoodLevel(sharedHunger);
+                otherPlayer.getFoodData().setSaturation(sharedSaturation);
             }
 
             SoulLink.LOGGER.debug("Hunger synced: Food={}, Saturation={}", sharedHunger,
@@ -667,7 +667,7 @@ public class SharedStatsHandler {
      * 
      * Without this, N players = Nx hunger drain since each player's regen consumes hunger.
      */
-    public static void onNaturalHungerDrain(ServerPlayerEntity drainPlayer, int foodDrain,
+    public static void onNaturalHungerDrain(ServerPlayer drainPlayer, int foodDrain,
             float satDrain) {
         if (isSyncing)
             return;
@@ -678,11 +678,11 @@ public class SharedStatsHandler {
         if (runManager == null || !runManager.isRunActive())
             return;
 
-        ServerWorld playerWorld = getPlayerWorld(drainPlayer);
+        ServerLevel playerWorld = getPlayerWorld(drainPlayer);
         if (playerWorld == null)
             return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+        if (!runManager.isTemporaryWorld(playerWorld.dimension()))
             return;
 
         MinecraftServer server = runManager.getServer();
@@ -690,11 +690,11 @@ public class SharedStatsHandler {
             return;
 
         int playerCount = 0;
-        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player))
                 continue;
-            ServerWorld world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.getRegistryKey())) {
+            ServerLevel world = getPlayerWorld(player);
+            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -718,29 +718,29 @@ public class SharedStatsHandler {
                 // Apply accumulated food drain (whole numbers only)
                 int foodToApply = (int) hungerDrainAccumulator;
                 if (foodToApply > 0) {
-                    sharedHunger = MathHelper.clamp(sharedHunger - foodToApply, 0, 20);
+                    sharedHunger = Mth.clamp(sharedHunger - foodToApply, 0, 20);
                     hungerDrainAccumulator -= foodToApply;
                 }
 
                 // Apply accumulated saturation drain
                 if (saturationDrainAccumulator >= 0.1f) {
                     float satToApply = saturationDrainAccumulator;
-                    sharedSaturation = MathHelper.clamp(sharedSaturation - satToApply, 0.0f, 20.0f);
+                    sharedSaturation = Mth.clamp(sharedSaturation - satToApply, 0.0f, 20.0f);
                     saturationDrainAccumulator = 0.0f;
                 }
 
-                for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                     if (!shouldParticipateInSoulLink(player))
                         continue;
-                    ServerWorld otherWorld = getPlayerWorld(player);
+                    ServerLevel otherWorld = getPlayerWorld(player);
                     if (otherWorld == null)
                         continue;
 
-                    if (!runManager.isTemporaryWorld(otherWorld.getRegistryKey()))
+                    if (!runManager.isTemporaryWorld(otherWorld.dimension()))
                         continue;
 
-                    player.getHungerManager().setFoodLevel(sharedHunger);
-                    player.getHungerManager().setSaturationLevel(sharedSaturation);
+                    player.getFoodData().setFoodLevel(sharedHunger);
+                    player.getFoodData().setSaturation(sharedSaturation);
                 }
 
                 SoulLink.LOGGER.debug(
@@ -764,25 +764,25 @@ public class SharedStatsHandler {
             return;
 
         // Only run every 20 ticks (1 second)
-        if (server.getTicks() % 20 != 0)
+        if (server.getTickCount() % 20 != 0)
             return;
 
         isSyncing = true;
         try {
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (!shouldParticipateInSoulLink(player))
                     continue;
-                ServerWorld playerWorld = getPlayerWorld(player);
+                ServerLevel playerWorld = getPlayerWorld(player);
                 if (playerWorld == null)
                     continue;
 
-                if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey()))
+                if (!runManager.isTemporaryWorld(playerWorld.dimension()))
                     continue;
 
                 float playerHealth = player.getHealth();
                 float playerAbsorption = player.getAbsorptionAmount();
-                int playerFood = player.getHungerManager().getFoodLevel();
-                float playerSat = player.getHungerManager().getSaturationLevel();
+                int playerFood = player.getFoodData().getFoodLevel();
+                float playerSat = player.getFoodData().getSaturationLevel();
 
                 if (Math.abs(playerHealth - sharedHealth) > 0.5f) {
                     player.setHealth(sharedHealth);
@@ -791,10 +791,10 @@ public class SharedStatsHandler {
                     player.setAbsorptionAmount(sharedAbsorption);
                 }
                 if (playerFood != sharedHunger) {
-                    player.getHungerManager().setFoodLevel(sharedHunger);
+                    player.getFoodData().setFoodLevel(sharedHunger);
                 }
                 if (Math.abs(playerSat - sharedSaturation) > 0.5f) {
-                    player.getHungerManager().setSaturationLevel(sharedSaturation);
+                    player.getFoodData().setSaturation(sharedSaturation);
                 }
             }
         } finally {
@@ -849,7 +849,7 @@ public class SharedStatsHandler {
      * Force sets the shared health (for admin/debug purposes).
      */
     public static void setSharedHealth(float health, MinecraftServer server) {
-        float clampedHealth = MathHelper.clamp(health, 0.0f, getMaxHealth());
+        float clampedHealth = Mth.clamp(health, 0.0f, getMaxHealth());
 
         if (server == null) {
             sharedHealth = clampedHealth;
@@ -865,12 +865,12 @@ public class SharedStatsHandler {
 
         isSyncing = true;
         try {
-            for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
-                ServerWorld playerWorld = getPlayerWorld(player);
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                ServerLevel playerWorld = getPlayerWorld(player);
                 if (playerWorld == null)
                     continue;
 
-                if (runManager.isTemporaryWorld(playerWorld.getRegistryKey())) {
+                if (runManager.isTemporaryWorld(playerWorld.dimension())) {
                     // Skip spectators and creative mode players for health sync
                     if (player.isSpectator() || player.isCreative()) {
                         continue;

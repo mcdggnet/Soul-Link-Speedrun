@@ -5,12 +5,12 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
 import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
 
 /**
@@ -24,11 +24,11 @@ public abstract class ItemStackMixin {
      * Hook the main damage method used when tools take durability damage from mining or combat. The
      * LivingEntity parameter tells us which entity is using the item.
      */
-    @Inject(method = "damage(ILnet/minecraft/entity/LivingEntity;Lnet/minecraft/entity/EquipmentSlot;)V",
+    @Inject(method = "hurtAndBreak(ILnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/entity/EquipmentSlot;)V",
             at = @At("RETURN"))
     private void onDamageWithEntity(int amount, LivingEntity entity, EquipmentSlot slot,
             CallbackInfo ci) {
-        if (!(entity instanceof ServerPlayerEntity player)) {
+        if (!(entity instanceof ServerPlayer player)) {
             return;
         }
         if (SharedInventoryHandler.isSyncing()) {
@@ -44,9 +44,9 @@ public abstract class ItemStackMixin {
      * Hook the damage method with ServerWorld/ServerPlayerEntity parameters. This is called in some
      * durability damage scenarios.
      */
-    @Inject(method = "damage(ILnet/minecraft/server/world/ServerWorld;Lnet/minecraft/server/network/ServerPlayerEntity;Ljava/util/function/Consumer;)V",
+    @Inject(method = "hurtAndBreak(ILnet/minecraft/server/level/ServerLevel;Lnet/minecraft/server/level/ServerPlayer;Ljava/util/function/Consumer;)V",
             at = @At("RETURN"))
-    private void onDamageWithWorld(int amount, ServerWorld world, ServerPlayerEntity player,
+    private void onDamageWithWorld(int amount, ServerLevel world, ServerPlayer player,
             Consumer<Item> breakCallback, CallbackInfo ci) {
         if (player == null) {
             return;

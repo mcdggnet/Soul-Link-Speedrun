@@ -7,8 +7,8 @@ import java.nio.file.Path;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.util.WorldSavePath;
 import net.minecraft.world.Difficulty;
+import net.minecraft.world.level.storage.LevelResource;
 import net.zenzty.soullink.SoulLink;
 
 /**
@@ -65,7 +65,7 @@ public final class SettingsPersistence {
     }
 
     private static Path getSettingsPath(MinecraftServer server) {
-        return server.getSavePath(WorldSavePath.ROOT).resolve(FILENAME);
+        return server.getWorldPath(LevelResource.ROOT).resolve(FILENAME);
     }
 
     /**

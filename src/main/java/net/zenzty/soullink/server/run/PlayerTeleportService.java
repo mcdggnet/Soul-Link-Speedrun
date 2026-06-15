@@ -1,18 +1,18 @@
 package net.zenzty.soullink.server.run;
 
 import java.util.Set;
-import net.minecraft.advancement.AdvancementEntry;
-import net.minecraft.advancement.AdvancementProgress;
-import net.minecraft.advancement.PlayerAdvancementTracker;
-import net.minecraft.entity.attribute.EntityAttributes;
-import net.minecraft.network.packet.s2c.play.ClearTitleS2CPacket;
+import net.minecraft.advancements.AdvancementHolder;
+import net.minecraft.advancements.AdvancementProgress;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.game.ClientboundClearTitlesPacket;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.GameMode;
+import net.minecraft.server.PlayerAdvancements;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.ai.attributes.Attributes;
+import net.minecraft.world.level.GameType;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.server.health.SharedStatsHandler;
 import net.zenzty.soullink.server.settings.Settings;
@@ -38,7 +38,7 @@ public class PlayerTeleportService {
      * @param syncToShared When true, syncs to shared stats and starts timer on input. When false
      *        (hunters in Manhunt), uses vanilla mechanics.
      */
-    public void teleportToSpawn(ServerPlayerEntity player, ServerWorld world, BlockPos spawnPos,
+    public void teleportToSpawn(ServerPlayer player, ServerLevel world, BlockPos spawnPos,
             TimerService timerService, boolean syncToShared) {
         if (player == null || world == null || spawnPos == null || timerService == null) {
             SoulLink.LOGGER.error("Failed to teleport to spawn: null parameter(s)");
@@ -47,11 +47,11 @@ public class PlayerTeleportService {
 
         resetPlayer(player);
 
-        player.teleport(world, spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
+        player.teleportTo(world, spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
                 Set.of(), 0, 0, true);
 
-        if (player.networkHandler != null) {
-            player.networkHandler.sendPacket(new ClearTitleS2CPacket(false));
+        if (player.connection != null) {
+            player.connection.send(new ClientboundClearTitlesPacket(false));
         }
 
         if (syncToShared) {
@@ -60,22 +60,22 @@ public class PlayerTeleportService {
         }
 
         world.playSound(null, player.getX(), player.getY(), player.getZ(),
-                SoundEvents.BLOCK_BEACON_ACTIVATE, SoundCategory.PLAYERS, 1.0f, 1.5f);
+                SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 1.0f, 1.5f);
     }
 
     /**
      * Teleports a player to the vanilla overworld spawn.
      */
-    public void teleportToVanillaSpawn(ServerPlayerEntity player) {
+    public void teleportToVanillaSpawn(ServerPlayer player) {
         if (player == null || server == null)
             return;
 
-        ServerWorld overworld = server.getOverworld();
+        ServerLevel overworld = server.overworld();
         if (overworld == null)
             return;
 
-        net.minecraft.world.WorldProperties.SpawnPoint spawn =
-                overworld.getLevelProperties().getSpawnPoint();
+        net.minecraft.world.level.storage.LevelData.RespawnData spawn =
+                overworld.getLevelData().getRespawnData();
 
         if (spawn == null || spawn.globalPos() == null) {
             SoulLink.LOGGER.error("Could not find vanilla spawn point!");
@@ -84,14 +84,14 @@ public class PlayerTeleportService {
 
         BlockPos spawnPos = spawn.globalPos().pos();
 
-        player.teleport(overworld, spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
-                Set.of(), player.getYaw(), player.getPitch(), true);
+        player.teleportTo(overworld, spawnPos.getX() + 0.5, spawnPos.getY(), spawnPos.getZ() + 0.5,
+                Set.of(), player.getYRot(), player.getXRot(), true);
     }
 
     /**
      * Forceloads chunks around spawn for smooth teleport.
      */
-    public void forceloadSpawnChunks(ServerWorld world, BlockPos spawnPos) {
+    public void forceloadSpawnChunks(ServerLevel world, BlockPos spawnPos) {
         int spawnChunkX = spawnPos.getX() >> 4;
         int spawnChunkZ = spawnPos.getZ() >> 4;
 
@@ -105,20 +105,20 @@ public class PlayerTeleportService {
     /**
      * Fully resets a player for a new run.
      */
-    private void resetPlayer(ServerPlayerEntity player) {
+    private void resetPlayer(ServerPlayer player) {
         // Clear inventory
-        player.getInventory().clear();
+        player.getInventory().clearContent();
 
         // Clear all status effects
-        player.clearStatusEffects();
+        player.removeAllEffects();
 
         // Reset experience
-        player.setExperienceLevel(0);
+        player.setExperienceLevels(0);
         player.setExperiencePoints(0);
 
         // Apply half heart mode if enabled
         Settings settings = Settings.getInstance();
-        var maxHealthAttr = player.getAttributeInstance(EntityAttributes.MAX_HEALTH);
+        var maxHealthAttr = player.getAttribute(Attributes.MAX_HEALTH);
         if (maxHealthAttr != null) {
             if (settings.isHalfHeartMode()) {
                 maxHealthAttr.setBaseValue(1.0);
@@ -132,21 +132,21 @@ public class PlayerTeleportService {
         }
 
         // Reset hunger
-        player.getHungerManager().setFoodLevel(20);
-        player.getHungerManager().setSaturationLevel(5.0f);
+        player.getFoodData().setFoodLevel(20);
+        player.getFoodData().setSaturation(5.0f);
 
         // Clear ender chest
-        player.getEnderChestInventory().clear();
+        player.getEnderChestInventory().clearContent();
 
         // Reset fire and freeze ticks
-        player.setFireTicks(0);
-        player.setFrozenTicks(0);
+        player.setRemainingFireTicks(0);
+        player.setTicksFrozen(0);
 
         // Reset all advancements
         resetPlayerAdvancements(player);
 
         // Set to survival mode
-        player.changeGameMode(GameMode.SURVIVAL);
+        player.setGameMode(GameType.SURVIVAL);
 
         SoulLink.LOGGER.info("Reset player {} for new run", player.getName().getString());
     }
@@ -154,14 +154,14 @@ public class PlayerTeleportService {
     /**
      * Resets all advancements for a player.
      */
-    private void resetPlayerAdvancements(ServerPlayerEntity player) {
-        PlayerAdvancementTracker tracker = player.getAdvancementTracker();
+    private void resetPlayerAdvancements(ServerPlayer player) {
+        PlayerAdvancements tracker = player.getAdvancements();
 
-        for (AdvancementEntry advancement : server.getAdvancementLoader().getAdvancements()) {
-            AdvancementProgress progress = tracker.getProgress(advancement);
+        for (AdvancementHolder advancement : server.getAdvancements().getAllAdvancements()) {
+            AdvancementProgress progress = tracker.getOrStartProgress(advancement);
 
-            for (String criterion : progress.getObtainedCriteria()) {
-                tracker.revokeCriterion(advancement, criterion);
+            for (String criterion : progress.getCompletedCriteria()) {
+                tracker.revoke(advancement, criterion);
             }
         }
 

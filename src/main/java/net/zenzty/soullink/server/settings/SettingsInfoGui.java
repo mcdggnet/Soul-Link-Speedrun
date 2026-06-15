@@ -3,25 +3,22 @@ package net.zenzty.soullink.server.settings;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.component.DataComponentTypes;
-import net.minecraft.component.type.LoreComponent;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.inventory.Inventory;
-import net.minecraft.inventory.SimpleInventory;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.screen.GenericContainerScreenHandler;
-import net.minecraft.screen.ScreenHandlerType;
-import net.minecraft.screen.SimpleNamedScreenHandlerFactory;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.screen.slot.SlotActionType;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.world.GameMode;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.Container;
+import net.minecraft.world.SimpleContainer;
+import net.minecraft.world.SimpleMenuProvider;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.inventory.*;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.component.ItemLore;
+import net.minecraft.world.level.GameType;
 import net.zenzty.soullink.mixin.ui.ScreenHandlerAccessor;
 import net.zenzty.soullink.server.run.RunManager;
 
@@ -43,7 +40,7 @@ public class SettingsInfoGui {
         /**
          * Opens the info settings GUI for a player.
          */
-        public static void open(ServerPlayerEntity player) {
+        public static void open(ServerPlayer player) {
                 Settings settings = Settings.getInstance();
                 boolean currentDamageLog = settings.isDamageLogEnabled();
 
@@ -51,29 +48,29 @@ public class SettingsInfoGui {
                 InfoSettingsInventory inventory = new InfoSettingsInventory(currentDamageLog);
 
                 // Open the screen
-                player.openHandledScreen(new SimpleNamedScreenHandlerFactory(
+                player.openMenu(new SimpleMenuProvider(
                                 (syncId, playerInventory, playerEntity) -> {
                                         return new InfoSettingsScreenHandler(syncId, inventory,
                                                         player);
-                                }, Text.literal("Soul Link Settings")
-                                                .formatted(Formatting.DARK_GRAY)));
+                                }, Component.literal("Soul Link Settings")
+                                                .withStyle(ChatFormatting.DARK_GRAY)));
         }
 
         /**
          * Creates a non-italic text for item names.
          */
-        private static Text createItemName(String text, Formatting... formattings) {
+        private static Component createItemName(String text, ChatFormatting... formattings) {
                 Style style = Style.EMPTY.withItalic(false);
-                for (Formatting formatting : formattings) {
-                        style = style.withFormatting(formatting);
+                for (ChatFormatting formatting : formattings) {
+                        style = style.applyFormat(formatting);
                 }
-                return Text.literal(text).setStyle(style);
+                return Component.literal(text).setStyle(style);
         }
 
         /**
          * Virtual inventory that tracks pending settings changes.
          */
-        public static class InfoSettingsInventory extends SimpleInventory {
+        public static class InfoSettingsInventory extends SimpleContainer {
 
                 private boolean pendingDamageLog;
                 private final boolean originalDamageLog;
@@ -92,142 +89,142 @@ public class SettingsInfoGui {
                 public void populateItems() {
                         // Fill with gray stained glass panes as background
                         ItemStack filler = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
-                        filler.set(DataComponentTypes.CUSTOM_NAME, Text.literal(" "));
+                        filler.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
                         for (int i = 0; i < INVENTORY_SIZE; i++) {
-                                setStack(i, filler.copy());
+                                setItem(i, filler.copy());
                         }
 
                         // Add combat log setting
-                        setStack(COMBAT_LOG_SLOT, createCombatLogItem());
+                        setItem(COMBAT_LOG_SLOT, createCombatLogItem());
 
                         // Add bug report button
-                        setStack(BUG_REPORT_SLOT, createBugReportItem());
+                        setItem(BUG_REPORT_SLOT, createBugReportItem());
 
                         // Add commands list button
-                        setStack(COMMANDS_SLOT, createCommandsItem());
+                        setItem(COMMANDS_SLOT, createCommandsItem());
 
                         // Add close button
-                        setStack(CLOSE_SLOT, createCloseItem());
+                        setItem(CLOSE_SLOT, createCloseItem());
                 }
 
                 private ItemStack createCombatLogItem() {
                         ItemStack item = new ItemStack(
                                         pendingDamageLog ? Items.WRITABLE_BOOK : Items.BOOK);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Combat Log",
-                                        Formatting.RED, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Combat Log",
+                                        ChatFormatting.RED, ChatFormatting.BOLD));
 
-                        LoreComponent lore = new LoreComponent(List.of(
-                                        Text.literal("Status: ").setStyle(Style.EMPTY
+                        ItemLore lore = new ItemLore(List.of(
+                                        Component.literal("Status: ").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.GRAY))
-                                                        .append(pendingDamageLog ? Text
+                                                        .applyFormat(ChatFormatting.GRAY))
+                                                        .append(pendingDamageLog ? Component
                                                                         .literal("ENABLED")
                                                                         .setStyle(Style.EMPTY
                                                                                         .withItalic(false)
-                                                                                        .withFormatting(Formatting.GREEN))
-                                                                        : Text.literal("DISABLED")
+                                                                                        .applyFormat(ChatFormatting.GREEN))
+                                                                        : Component.literal("DISABLED")
                                                                                         .setStyle(Style.EMPTY
                                                                                                         .withItalic(false)
-                                                                                                        .withFormatting(Formatting.RED))),
-                                        Text.empty(),
-                                        Text.literal("Shows damage notifications in chat")
+                                                                                                        .applyFormat(ChatFormatting.RED))),
+                                        Component.empty(),
+                                        Component.literal("Shows damage notifications in chat")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.literal("when players take damage.")
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.literal("when players take damage.")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to toggle").setStyle(Style.EMPTY
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to toggle").setStyle(Style.EMPTY
                                                         .withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, lore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, lore);
 
                         return item;
                 }
 
                 private ItemStack createBugReportItem() {
                         ItemStack item = new ItemStack(Items.KNOWLEDGE_BOOK);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Bug Report",
-                                        Formatting.AQUA, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Bug Report",
+                                        ChatFormatting.AQUA, ChatFormatting.BOLD));
 
-                        LoreComponent lore = new LoreComponent(List.of(Text
+                        ItemLore lore = new ItemLore(List.of(Component
                                         .literal("Found a bug? Let us know!")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.literal("Join our Discord to report it.")
+                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.literal("Join our Discord to report it.")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY)),
-                                        Text.empty(),
-                                        Text.literal("Click to get the invite link in chat.")
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY)),
+                                        Component.empty(),
+                                        Component.literal("Click to get the invite link in chat.")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, lore);
+                                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, lore);
 
                         return item;
                 }
 
                 private ItemStack createCommandsItem() {
                         ItemStack item = new ItemStack(Items.COMMAND_BLOCK);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName(
-                                        "Available Commands", Formatting.GOLD, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName(
+                                        "Available Commands", ChatFormatting.GOLD, ChatFormatting.BOLD));
 
-                        List<Text> loreLines = new ArrayList<>();
-                        loreLines.add(Text.literal("Available Commands:").setStyle(Style.EMPTY
-                                        .withItalic(false).withFormatting(Formatting.WHITE)));
-                        loreLines.add(Text.empty());
-                        loreLines.add(Text.literal("  /start")
+                        List<Component> loreLines = new ArrayList<>();
+                        loreLines.add(Component.literal("Available Commands:").setStyle(Style.EMPTY
+                                        .withItalic(false).applyFormat(ChatFormatting.WHITE)));
+                        loreLines.add(Component.empty());
+                        loreLines.add(Component.literal("  /start")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GREEN))
-                                        .append(Text.literal(" - Start a new run")
+                                                        .applyFormat(ChatFormatting.GREEN))
+                                        .append(Component.literal(" - Start a new run")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GRAY))));
-                        loreLines.add(Text.literal("  /chaos")
+                                                                        .applyFormat(ChatFormatting.GRAY))));
+                        loreLines.add(Component.literal("  /chaos")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GREEN))
-                                        .append(Text.literal(" - Open chaos settings")
+                                                        .applyFormat(ChatFormatting.GREEN))
+                                        .append(Component.literal(" - Open chaos settings")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GRAY))));
-                        loreLines.add(Text.literal("  /settings")
+                                                                        .applyFormat(ChatFormatting.GRAY))));
+                        loreLines.add(Component.literal("  /settings")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GREEN))
-                                        .append(Text.literal(" - Open info settings")
+                                                        .applyFormat(ChatFormatting.GREEN))
+                                        .append(Component.literal(" - Open info settings")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GRAY))));
-                        loreLines.add(Text.literal("  /runinfo")
+                                                                        .applyFormat(ChatFormatting.GRAY))));
+                        loreLines.add(Component.literal("  /runinfo")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GREEN))
-                                        .append(Text.literal(" - Display run info")
+                                                        .applyFormat(ChatFormatting.GREEN))
+                                        .append(Component.literal(" - Display run info")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GRAY))));
-                        loreLines.add(Text.literal("  /reset")
+                                                                        .applyFormat(ChatFormatting.GRAY))));
+                        loreLines.add(Component.literal("  /reset")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.GREEN))
-                                        .append(Text.literal(" - Reset current run")
+                                                        .applyFormat(ChatFormatting.GREEN))
+                                        .append(Component.literal(" - Reset current run")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GRAY))));
-                        loreLines.add(Text.literal("  /stoprun")
+                                                                        .applyFormat(ChatFormatting.GRAY))));
+                        loreLines.add(Component.literal("  /stoprun")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.RED))
-                                        .append(Text.literal(" - Stop run (Admin)")
+                                                        .applyFormat(ChatFormatting.RED))
+                                        .append(Component.literal(" - Stop run (Admin)")
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.GRAY))));
+                                                                        .applyFormat(ChatFormatting.GRAY))));
 
-                        LoreComponent lore = new LoreComponent(loreLines);
-                        item.set(DataComponentTypes.LORE, lore);
+                        ItemLore lore = new ItemLore(loreLines);
+                        item.set(DataComponents.LORE, lore);
 
                         return item;
                 }
 
                 private ItemStack createCloseItem() {
                         ItemStack item = new ItemStack(Items.EMERALD);
-                        item.set(DataComponentTypes.CUSTOM_NAME, createItemName("Save settings",
-                                        Formatting.GREEN, Formatting.BOLD));
+                        item.set(DataComponents.CUSTOM_NAME, createItemName("Save settings",
+                                        ChatFormatting.GREEN, ChatFormatting.BOLD));
 
-                        LoreComponent lore = new LoreComponent(List.of(Text
+                        ItemLore lore = new ItemLore(List.of(Component
                                         .literal("Click to save and close this menu.")
                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                        .withFormatting(Formatting.DARK_GRAY))));
-                        item.set(DataComponentTypes.LORE, lore);
+                                                        .applyFormat(ChatFormatting.DARK_GRAY))));
+                        item.set(DataComponents.LORE, lore);
 
                         return item;
                 }
@@ -249,22 +246,22 @@ public class SettingsInfoGui {
          * Virtual slot that prevents all item interactions.
          */
         private static class VirtualSlot extends Slot {
-                public VirtualSlot(Inventory inventory, int index, int x, int y) {
+                public VirtualSlot(Container inventory, int index, int x, int y) {
                         super(inventory, index, x, y);
                 }
 
                 @Override
-                public boolean canTakeItems(PlayerEntity playerEntity) {
+                public boolean mayPickup(Player playerEntity) {
                         return false;
                 }
 
                 @Override
-                public boolean canInsert(ItemStack stack) {
+                public boolean mayPlace(ItemStack stack) {
                         return false;
                 }
 
                 @Override
-                public boolean canBeHighlighted() {
+                public boolean isHighlightable() {
                         return true;
                 }
         }
@@ -272,15 +269,15 @@ public class SettingsInfoGui {
         /**
          * Virtual screen handler for the info settings GUI.
          */
-        public static class InfoSettingsScreenHandler extends GenericContainerScreenHandler {
+        public static class InfoSettingsScreenHandler extends ChestMenu {
 
                 private final InfoSettingsInventory settingsInventory;
-                private final ServerPlayerEntity player;
+                private final ServerPlayer player;
                 private boolean confirmed = false;
 
                 public InfoSettingsScreenHandler(int syncId, InfoSettingsInventory inventory,
-                                ServerPlayerEntity player) {
-                        super(ScreenHandlerType.GENERIC_9X3, syncId, player.getInventory(),
+                                ServerPlayer player) {
+                        super(MenuType.GENERIC_9x3, syncId, player.getInventory(),
                                         inventory, 3);
                         this.settingsInventory = inventory;
                         this.player = player;
@@ -294,41 +291,39 @@ public class SettingsInfoGui {
                 }
 
                 @Override
-                public void onSlotClick(int slotIndex, int button, SlotActionType actionType,
-                                net.minecraft.entity.player.PlayerEntity clickingPlayer) {
+                public void clicked(int slotIndex, int buttonNum, ContainerInput containerInput, Player player) {
                         if (slotIndex < INVENTORY_SIZE && slotIndex >= 0) {
                                 handleSettingsClick(slotIndex);
-                                setCursorStack(net.minecraft.item.ItemStack.EMPTY);
+                                setCarried(net.minecraft.world.item.ItemStack.EMPTY);
 
-                                if (clickingPlayer instanceof ServerPlayerEntity serverPlayer
-                                                && serverPlayer.interactionManager
-                                                                .getGameMode() == GameMode.SPECTATOR) {
+                                if (player instanceof ServerPlayer serverPlayer
+                                        && serverPlayer.gameMode
+                                        .getGameModeForPlayer() == GameType.SPECTATOR) {
                                         ScreenHandlerAccessor accessor =
-                                                        (ScreenHandlerAccessor) this;
+                                                (ScreenHandlerAccessor) this;
                                         accessor.invokeUpdateToClient();
                                 } else {
-                                        sendContentUpdates();
+                                        broadcastChanges();
                                 }
 
                                 return;
                         }
-
-                        super.onSlotClick(slotIndex, button, actionType, clickingPlayer);
+                        super.clicked(slotIndex, buttonNum, containerInput, player);
                 }
 
                 @Override
-                public ItemStack quickMove(net.minecraft.entity.player.PlayerEntity playerEntity,
+                public ItemStack quickMoveStack(net.minecraft.world.entity.player.Player playerEntity,
                                 int slot) {
                         return ItemStack.EMPTY;
                 }
 
                 @Override
-                public boolean canInsertIntoSlot(ItemStack stack,
-                                net.minecraft.screen.slot.Slot slot) {
-                        if (slot.inventory == settingsInventory) {
+                public boolean canTakeItemForPickAll(ItemStack stack,
+                                net.minecraft.world.inventory.Slot slot) {
+                        if (slot.container == settingsInventory) {
                                 return false;
                         }
-                        return super.canInsertIntoSlot(stack, slot);
+                        return super.canTakeItemForPickAll(stack, slot);
                 }
 
                 private void handleSettingsClick(int slotIndex) {
@@ -340,56 +335,47 @@ public class SettingsInfoGui {
                                 }
                                 case BUG_REPORT_SLOT -> {
                                         final String discordUrl = "https://discord.gg/7KkZP2r62H";
-                                        player.sendMessage(RunManager.formatMessage(
-                                                        "Report bugs and get support in our Discord:"),
-                                                        false);
-                                        player.sendMessage(Text.literal(discordUrl)
+                                        player.sendSystemMessage(RunManager.formatMessage(
+                                                        "Report bugs and get support in our Discord:"));
+                                        player.sendSystemMessage(Component.literal(discordUrl)
                                                         .setStyle(Style.EMPTY.withItalic(false)
-                                                                        .withFormatting(Formatting.DARK_AQUA,
-                                                                                        Formatting.UNDERLINE)
+                                                                        .applyFormats(ChatFormatting.DARK_AQUA,
+                                                                                        ChatFormatting.UNDERLINE)
                                                                         .withClickEvent(new ClickEvent.OpenUrl(
-                                                                                        URI.create(discordUrl)))),
-                                                        false);
+                                                                                        URI.create(discordUrl)))));
                                         playClickSound();
                                 }
                                 case COMMANDS_SLOT -> {
                                         // Send commands list to chat
-                                        player.sendMessage(
+                                        player.sendSystemMessage(
                                                         RunManager.formatMessage(
-                                                                        "Available Commands:"),
-                                                        false);
-                                        player.sendMessage(Text.literal("/start")
-                                                        .formatted(Formatting.GREEN)
-                                                        .append(Text.literal(" - Start a new run")
-                                                                        .formatted(Formatting.GRAY)),
-                                                        false);
-                                        player.sendMessage(Text.literal("/chaos")
-                                                        .formatted(Formatting.GREEN)
-                                                        .append(Text.literal(
+                                                                        "Available Commands:"));
+                                        player.sendSystemMessage(Component.literal("/start")
+                                                        .withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(" - Start a new run")
+                                                                        .withStyle(ChatFormatting.GRAY)));
+                                        player.sendSystemMessage(Component.literal("/chaos")
+                                                        .withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(
                                                                         " - Open chaos settings")
-                                                                        .formatted(Formatting.GRAY)),
-                                                        false);
-                                        player.sendMessage(Text.literal("/settings")
-                                                        .formatted(Formatting.GREEN)
-                                                        .append(Text.literal(
+                                                                        .withStyle(ChatFormatting.GRAY)));
+                                        player.sendSystemMessage(Component.literal("/settings")
+                                                        .withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(
                                                                         " - Open info settings")
-                                                                        .formatted(Formatting.GRAY)),
-                                                        false);
-                                        player.sendMessage(Text.literal("/runinfo")
-                                                        .formatted(Formatting.GREEN)
-                                                        .append(Text.literal(" - Display run info")
-                                                                        .formatted(Formatting.GRAY)),
-                                                        false);
-                                        player.sendMessage(Text.literal("/reset")
-                                                        .formatted(Formatting.GREEN)
-                                                        .append(Text.literal(" - Reset current run")
-                                                                        .formatted(Formatting.GRAY)),
-                                                        false);
-                                        player.sendMessage(Text.literal("/stoprun")
-                                                        .formatted(Formatting.RED)
-                                                        .append(Text.literal(" - Stop run (Admin)")
-                                                                        .formatted(Formatting.GRAY)),
-                                                        false);
+                                                                        .withStyle(ChatFormatting.GRAY)));
+                                        player.sendSystemMessage(Component.literal("/runinfo")
+                                                        .withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(" - Display run info")
+                                                                        .withStyle(ChatFormatting.GRAY)));
+                                        player.sendSystemMessage(Component.literal("/reset")
+                                                        .withStyle(ChatFormatting.GREEN)
+                                                        .append(Component.literal(" - Reset current run")
+                                                                        .withStyle(ChatFormatting.GRAY)));
+                                        player.sendSystemMessage(Component.literal("/stoprun")
+                                                        .withStyle(ChatFormatting.RED)
+                                                        .append(Component.literal(" - Stop run (Admin)")
+                                                                        .withStyle(ChatFormatting.GRAY)));
                                         playClickSound();
                                 }
                                 case CLOSE_SLOT -> {
@@ -405,57 +391,55 @@ public class SettingsInfoGui {
                                                         SettingsPersistence.save(server);
                                                 }
 
-                                                player.sendMessage(RunManager.formatMessage(
+                                                player.sendSystemMessage(RunManager.formatMessage(
                                                                 "Combat log " + (settingsInventory
                                                                                 .isPendingDamageLog()
                                                                                                 ? "enabled"
                                                                                                 : "disabled")
-                                                                                + "."),
-                                                                false);
+                                                                                + "."));
 
-                                                player.closeHandledScreen();
+                                                player.closeContainer();
                                                 playConfirmSound();
                                         } else {
-                                                player.closeHandledScreen();
+                                                player.closeContainer();
                                         }
                                 }
                         }
                 }
 
                 private void playClickSound() {
-                        player.networkHandler.sendPacket(
-                                        new net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket(
-                                                        net.minecraft.sound.SoundEvents.UI_BUTTON_CLICK,
-                                                        net.minecraft.sound.SoundCategory.MASTER,
+                        player.connection.send(
+                                        new net.minecraft.network.protocol.game.ClientboundSoundPacket(
+                                                        net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK,
+                                                        net.minecraft.sounds.SoundSource.MASTER,
                                                         player.getX(), player.getY(), player.getZ(),
                                                         0.5f, 1.0f, player.getRandom().nextLong()));
                 }
 
                 private void playConfirmSound() {
-                        player.networkHandler.sendPacket(
-                                        new net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket(
-                                                        net.minecraft.registry.Registries.SOUND_EVENT
-                                                                        .getEntry(net.minecraft.sound.SoundEvents.UI_BUTTON_CLICK
+                        player.connection.send(
+                                        new net.minecraft.network.protocol.game.ClientboundSoundPacket(
+                                                        net.minecraft.core.registries.BuiltInRegistries.SOUND_EVENT
+                                                                        .wrapAsHolder(net.minecraft.sounds.SoundEvents.UI_BUTTON_CLICK
                                                                                         .value()),
-                                                        net.minecraft.sound.SoundCategory.MASTER,
+                                                        net.minecraft.sounds.SoundSource.MASTER,
                                                         player.getX(), player.getY(), player.getZ(),
                                                         0.5f, 1.0f, player.getRandom().nextLong()));
                 }
 
                 @Override
-                public void onClosed(net.minecraft.entity.player.PlayerEntity closingPlayer) {
-                        super.onClosed(closingPlayer);
+                public void removed(net.minecraft.world.entity.player.Player closingPlayer) {
+                        super.removed(closingPlayer);
 
                         if (!confirmed && settingsInventory.hasChanges()) {
-                                player.sendMessage(
+                                player.sendSystemMessage(
                                                 RunManager.formatMessage(
-                                                                "Settings changes discarded."),
-                                                false);
+                                                                "Settings changes discarded."));
                         }
                 }
 
                 @Override
-                public boolean canUse(net.minecraft.entity.player.PlayerEntity playerEntity) {
+                public boolean stillValid(net.minecraft.world.entity.player.Player playerEntity) {
                         return true;
                 }
         }

@@ -9,24 +9,24 @@ import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.entity.ItemEntity;
-import net.minecraft.entity.boss.dragon.EnderDragonEntity;
-import net.minecraft.entity.damage.DamageSource;
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.network.packet.s2c.play.SubtitleS2CPacket;
-import net.minecraft.network.packet.s2c.play.TitleS2CPacket;
+import net.minecraft.ChatFormatting;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.protocol.game.ClientboundSetSubtitleTextPacket;
+import net.minecraft.network.protocol.game.ClientboundSetTitleTextPacket;
 import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.server.world.ServerWorld;
-import net.minecraft.text.ClickEvent;
-import net.minecraft.text.HoverEvent;
-import net.minecraft.text.Style;
-import net.minecraft.text.Text;
-import net.minecraft.util.Formatting;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.GameMode;
-import net.minecraft.world.WorldProperties;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
+import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.storage.LevelData;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.common.SoulLinkConstants;
 import net.zenzty.soullink.server.health.SharedJumpHandler;
@@ -106,7 +106,7 @@ public class EventRegistry {
     private static void registerConnectionEvents() {
         // Player joins - show welcome or handle late join
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ServerPlayerEntity player = handler.getPlayer();
+            ServerPlayer player = handler.getPlayer();
 
             // Check if RunManager is initialized (might not be if server just started)
             // But usually SERVER_STARTED runs before player join.
@@ -144,12 +144,12 @@ public class EventRegistry {
                     case GENERATING_WORLD:
                     case RUNNING:
                         // Run in progress - teleport player to it
-                        ServerWorld playerWorld = player.getEntityWorld();
+                        ServerLevel playerWorld = player.level();
                         if (playerWorld == null) {
                             return;
                         }
 
-                        if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey())) {
+                        if (!runManager.isTemporaryWorld(playerWorld.dimension())) {
                             SoulLink.LOGGER.info("Late joiner detected: {} - teleporting to run",
                                     player.getName().getString());
                             runManager.teleportPlayerToRun(player);
@@ -157,8 +157,8 @@ public class EventRegistry {
                         break;
 
                     case GAMEOVER:
-                        player.sendMessage(RunManager.formatMessage(
-                                "Run has ended. Use /start to begin a new run."), false);
+                        player.sendSystemMessage(RunManager.formatMessage(
+                                "Run has ended. Use /start to begin a new run."));
                         break;
                 }
             });
@@ -166,7 +166,7 @@ public class EventRegistry {
 
         // Player disconnects - log for debugging
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            ServerPlayerEntity player = handler.getPlayer();
+            ServerPlayer player = handler.getPlayer();
 
             RunManager runManager;
             try {
@@ -185,82 +185,76 @@ public class EventRegistry {
     /**
      * Sends the welcome message to a player explaining the mod.
      */
-    private static void sendWelcomeMessage(ServerPlayerEntity player) {
+    private static void sendWelcomeMessage(ServerPlayer player) {
         // Title - Show beta version info only if version contains "beta"
         var container = FabricLoader.getInstance().getModContainer(SoulLinkConstants.MOD_ID);
         if (container.isPresent()) {
             String version = container.get().getMetadata().getVersion().getFriendlyString();
             if (version.contains("beta")) {
-                player.sendMessage(Text.empty()
-                        .append(Text.literal("SOUL LINK SPEEDRUN - BETA RELEASE " + version)
-                                .formatted(Formatting.RED, Formatting.BOLD)),
-                        false);
+                player.sendSystemMessage(Component.empty()
+                        .append(Component.literal("SOUL LINK SPEEDRUN - BETA RELEASE " + version)
+                                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
             } else {
-                player.sendMessage(Text.empty().append(Text.literal("SOUL LINK SPEEDRUN")
-                        .formatted(Formatting.RED, Formatting.BOLD)), false);
+                player.sendSystemMessage(Component.empty().append(Component.literal("SOUL LINK SPEEDRUN")
+                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
             }
         } else {
-            player.sendMessage(Text.empty().append(
-                    Text.literal("SOUL LINK SPEEDRUN").formatted(Formatting.RED, Formatting.BOLD)),
-                    false);
+            player.sendSystemMessage(Component.empty().append(
+                    Component.literal("SOUL LINK SPEEDRUN").withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
         }
 
         // Empty line
-        player.sendMessage(Text.empty(), false);
+        player.sendSystemMessage(Component.empty());
 
         // Soul Link info
-        player.sendMessage(Text.empty().append(Text.literal("❤ ").formatted(Formatting.RED))
-                .append(Text.literal("Soul Link").formatted(Formatting.WHITE))
-                .append(Text.literal(" - All players share health and hunger.")
-                        .formatted(Formatting.GRAY)),
-                false);
+        player.sendSystemMessage(Component.empty().append(Component.literal("❤ ").withStyle(ChatFormatting.RED))
+                .append(Component.literal("Soul Link").withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(" - All players share health and hunger.")
+                        .withStyle(ChatFormatting.GRAY)));
 
         // Goal info
-        player.sendMessage(Text.empty().append(Text.literal("⚔ ").formatted(Formatting.GOLD))
-                .append(Text.literal("Goal").formatted(Formatting.WHITE))
-                .append(Text.literal(" - Defeat the Ender Dragon together.")
-                        .formatted(Formatting.GRAY)),
-                false);
+        player.sendSystemMessage(Component.empty().append(Component.literal("⚔ ").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal("Goal").withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(" - Defeat the Ender Dragon together.")
+                        .withStyle(ChatFormatting.GRAY)));
 
         // Death info
-        player.sendMessage(Text.empty().append(Text.literal("☠ ").formatted(Formatting.DARK_RED))
-                .append(Text.literal("Death").formatted(Formatting.WHITE))
-                .append(Text.literal(" - If anyone dies, the run ends for all.")
-                        .formatted(Formatting.GRAY)),
-                false);
+        player.sendSystemMessage(Component.empty().append(Component.literal("☠ ").withStyle(ChatFormatting.DARK_RED))
+                .append(Component.literal("Death").withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(" - If anyone dies, the run ends for all.")
+                        .withStyle(ChatFormatting.GRAY)));
 
         // Empty line
-        player.sendMessage(Text.empty(), false);
+        player.sendSystemMessage(Component.empty());
 
         // Start command
-        player.sendMessage(Text.empty().append(Text.literal("Use ").formatted(Formatting.GRAY))
-                .append(Text.literal("/start").formatted(Formatting.GOLD))
-                .append(Text.literal(" or ").formatted(Formatting.GRAY))
-                .append(Text.literal("click here").setStyle(Style.EMPTY.withColor(Formatting.BLUE)
-                        .withUnderline(true).withClickEvent(new ClickEvent.RunCommand("/start"))
+        player.sendSystemMessage(Component.empty().append(Component.literal("Use ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("/start").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" or ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("click here").setStyle(Style.EMPTY.withColor(ChatFormatting.BLUE)
+                        .withUnderlined(true).withClickEvent(new ClickEvent.RunCommand("/start"))
                         .withHoverEvent(new HoverEvent.ShowText(
-                                Text.literal("Start a new run").formatted(Formatting.GRAY)))))
-                .append(Text.literal(" to begin.").formatted(Formatting.GRAY)), false);
+                                Component.literal("Start a new run").withStyle(ChatFormatting.GRAY)))))
+                .append(Component.literal(" to begin.").withStyle(ChatFormatting.GRAY)));
 
         // Empty line
-        player.sendMessage(Text.empty(), false);
+        player.sendSystemMessage(Component.empty());
 
         // Settings tip
-        player.sendMessage(Text.empty().append(Text.literal("TIP: ").formatted(Formatting.YELLOW))
-                .append(Text.literal("Customize your next run with ").formatted(Formatting.GRAY))
-                .append(Text.literal("/chaos").setStyle(Style.EMPTY.withColor(Formatting.GOLD)
+        player.sendSystemMessage(Component.empty().append(Component.literal("TIP: ").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal("Customize your next run with ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("/chaos").setStyle(Style.EMPTY.withColor(ChatFormatting.GOLD)
                         .withClickEvent(new ClickEvent.RunCommand("/chaos"))
                         .withHoverEvent(new HoverEvent.ShowText(
-                                Text.literal("Open run options").formatted(Formatting.GRAY)))))
-                .append(Text.literal(".").formatted(Formatting.GRAY)), false);
+                                Component.literal("Open run options").withStyle(ChatFormatting.GRAY)))))
+                .append(Component.literal(".").withStyle(ChatFormatting.GRAY)));
 
-        player.sendMessage(Text.empty()
-                .append(Text.literal("Having troubles? ").formatted(Formatting.GRAY))
-                .append(Text.literal("/settings").setStyle(Style.EMPTY.withColor(Formatting.AQUA)
+        player.sendSystemMessage(Component.empty()
+                .append(Component.literal("Having troubles? ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("/settings").setStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                         .withClickEvent(new ClickEvent.RunCommand("/settings"))
                         .withHoverEvent(new HoverEvent.ShowText(
-                                Text.literal("Open info settings").formatted(Formatting.GRAY))))),
-                false);
+                                Component.literal("Open info settings").withStyle(ChatFormatting.GRAY))))));
 
     }
 
@@ -296,7 +290,7 @@ public class EventRegistry {
     private static void registerEntityEvents() {
         // Handle entity death - check for dragon
         ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
-            if (entity instanceof EnderDragonEntity dragon) {
+            if (entity instanceof EnderDragon dragon) {
                 RunManager runManager;
                 try {
                     runManager = RunManager.getInstance();
@@ -308,8 +302,8 @@ public class EventRegistry {
                     return;
                 }
 
-                if (dragon.getEntityWorld() instanceof ServerWorld dragonWorld
-                        && runManager.isTemporaryWorld(dragonWorld.getRegistryKey())) {
+                if (dragon.level() instanceof ServerLevel dragonWorld
+                        && runManager.isTemporaryWorld(dragonWorld.dimension())) {
                     SoulLink.LOGGER
                             .info("Ender Dragon killed in temporary End - triggering victory!");
                     runManager.triggerVictory();
@@ -319,7 +313,7 @@ public class EventRegistry {
 
         // Handle damage - intercept lethal damage to prevent death screen
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
-            if (!(entity instanceof ServerPlayerEntity player)) {
+            if (!(entity instanceof ServerPlayer player)) {
                 return true;
             }
 
@@ -361,7 +355,7 @@ public class EventRegistry {
         // After damage is applied
         ServerLivingEntityEvents.AFTER_DAMAGE
                 .register((entity, source, baseDamageTaken, damageTaken, blocked) -> {
-                    if (!(entity instanceof ServerPlayerEntity player)) {
+                    if (!(entity instanceof ServerPlayer player)) {
                         return;
                     }
 
@@ -393,12 +387,12 @@ public class EventRegistry {
                         return;
                     }
 
-                    ServerWorld playerWorld = player.getEntityWorld();
+                    ServerLevel playerWorld = player.level();
                     if (playerWorld == null) {
                         return;
                     }
 
-                    if (!runManager.isTemporaryWorld(playerWorld.getRegistryKey())) {
+                    if (!runManager.isTemporaryWorld(playerWorld.dimension())) {
                         return;
                     }
 
@@ -414,13 +408,13 @@ public class EventRegistry {
     /**
      * Handles player death logic (broadcast message, reset health, trigger game over).
      */
-    private static void handlePlayerDeath(ServerPlayerEntity player, DamageSource source,
+    private static void handlePlayerDeath(ServerPlayer player, DamageSource source,
             RunManager runManager) {
-        Text deathMessage = source.getDeathMessage(player);
-        Text formattedDeathMessage = Text.empty().append(RunManager.getPrefix())
-                .append(Text.literal("☠ ").formatted(Formatting.DARK_RED))
-                .append(deathMessage.copy().formatted(Formatting.RED));
-        runManager.getServer().getPlayerManager().broadcast(formattedDeathMessage, false);
+        Component deathMessage = source.getLocalizedDeathMessage(player);
+        Component formattedDeathMessage = Component.empty().append(RunManager.getPrefix())
+                .append(Component.literal("☠ ").withStyle(ChatFormatting.DARK_RED))
+                .append(deathMessage.copy().withStyle(ChatFormatting.RED));
+        runManager.getServer().getPlayerList().broadcastSystemMessage(formattedDeathMessage, false);
 
         player.setHealth(player.getMaxHealth());
         runManager.triggerGameOver();
@@ -435,52 +429,52 @@ public class EventRegistry {
      * @param source the damage source
      * @param runManager the run manager (used for spawn, run state, and overworld)
      */
-    public static void handleHunterDeath(ServerPlayerEntity player, DamageSource source,
+    public static void handleHunterDeath(ServerPlayer player, DamageSource source,
             RunManager runManager) {
         MinecraftServer server = runManager.getServer();
         if (server == null)
             return;
 
-        Text deathMessage = source.getDeathMessage(player);
-        Text formatted = Text.empty().append(RunManager.getPrefix())
-                .append(Text.literal("☠ ").formatted(Formatting.DARK_RED))
-                .append(deathMessage.copy().formatted(Formatting.RED));
-        server.getPlayerManager().broadcast(formatted, false);
+        Component deathMessage = source.getLocalizedDeathMessage(player);
+        Component formatted = Component.empty().append(RunManager.getPrefix())
+                .append(Component.literal("☠ ").withStyle(ChatFormatting.DARK_RED))
+                .append(deathMessage.copy().withStyle(ChatFormatting.RED));
+        server.getPlayerList().broadcastSystemMessage(formatted, false);
 
-        List<net.minecraft.registry.entry.RegistryEntry<net.minecraft.entity.effect.StatusEffect>> toRemove =
-                player.getStatusEffects().stream()
-                        .filter(e -> !e.getEffectType().value().isBeneficial())
-                        .map(e -> e.getEffectType()).toList();
-        toRemove.forEach(player::removeStatusEffect);
+        List<net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect>> toRemove =
+                player.getActiveEffects().stream()
+                        .filter(e -> !e.getEffect().value().isBeneficial())
+                        .map(e -> e.getEffect()).toList();
+        toRemove.forEach(player::removeEffect);
 
-        player.changeGameMode(GameMode.SPECTATOR);
+        player.setGameMode(GameType.SPECTATOR);
 
-        ServerWorld world = player.getEntityWorld();
+        ServerLevel world = player.level();
         double x = player.getX(), y = player.getY(), z = player.getZ();
 
-        for (int i = 0; i < player.getInventory().size(); i++) {
-            ItemStack stack = player.getInventory().getStack(i);
-            if (!stack.isEmpty() && !stack.isOf(Items.COMPASS)) {
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            ItemStack stack = player.getInventory().getItem(i);
+            if (!stack.isEmpty() && !stack.is(Items.COMPASS)) {
                 ItemEntity ent = new ItemEntity(world, x, y, z, stack.copy());
-                ent.setVelocity(world.getRandom().nextGaussian() * 0.05,
+                ent.setDeltaMovement(world.getRandom().nextGaussian() * 0.05,
                         world.getRandom().nextGaussian() * 0.05 + 0.2,
                         world.getRandom().nextGaussian() * 0.05);
-                world.spawnEntity(ent);
+                world.addFreshEntity(ent);
             }
         }
 
-        player.getInventory().clear();
-        player.getEnderChestInventory().clear();
+        player.getInventory().clearContent();
+        player.getEnderChestInventory().clearContent();
 
         for (int i = 5; i >= 1; i--) {
             final int c = i;
             scheduleDelayed((5 - i) * 20, () -> {
                 if (player.isRemoved() || !runManager.isRunActive())
                     return;
-                player.networkHandler.sendPacket(new TitleS2CPacket(Text.literal(String.valueOf(c))
-                        .formatted(Formatting.RED, Formatting.BOLD)));
-                player.networkHandler.sendPacket(new SubtitleS2CPacket(
-                        Text.literal("Respawning...").formatted(Formatting.GRAY)));
+                player.connection.send(new ClientboundSetTitleTextPacket(Component.literal(String.valueOf(c))
+                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
+                player.connection.send(new ClientboundSetSubtitleTextPacket(
+                        Component.literal("Respawning...").withStyle(ChatFormatting.GRAY)));
             });
         }
 
@@ -488,37 +482,37 @@ public class EventRegistry {
             if (player.isRemoved() || !runManager.isRunActive())
                 return;
 
-            player.networkHandler.sendPacket(new TitleS2CPacket(
-                    Text.literal("RESPAWN").formatted(Formatting.GREEN, Formatting.BOLD)));
+            player.connection.send(new ClientboundSetTitleTextPacket(
+                    Component.literal("RESPAWN").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)));
 
-            player.changeGameMode(GameMode.SURVIVAL);
+            player.setGameMode(GameType.SURVIVAL);
 
-            ServerWorld targetWorld = runManager.getTemporaryOverworld();
+            ServerLevel targetWorld = runManager.getTemporaryOverworld();
             BlockPos targetPos = runManager.getSpawnPos();
 
-            ServerPlayerEntity.Respawn resp = player.getRespawn();
+            ServerPlayer.RespawnConfig resp = player.getRespawnConfig();
             if (resp != null) {
                 var data = resp.respawnData();
-                if (data != null && runManager.isTemporaryWorld(data.getDimension())) {
-                    ServerWorld sw = server.getWorld(data.getDimension());
+                if (data != null && runManager.isTemporaryWorld(data.dimension())) {
+                    ServerLevel sw = server.getLevel(data.dimension());
                     if (sw != null) {
                         targetWorld = sw;
-                        targetPos = data.getPos();
+                        targetPos = data.pos();
                     }
                 }
             }
 
             if (targetWorld != null && targetPos != null) {
-                WorldProperties.SpawnPoint sp = WorldProperties.SpawnPoint
-                        .create(targetWorld.getRegistryKey(), targetPos, 0.0f, 0.0f);
-                player.setSpawnPoint(new ServerPlayerEntity.Respawn(sp, true), false);
-                player.teleport(targetWorld, targetPos.getX() + 0.5, targetPos.getY(),
+                LevelData.RespawnData sp = LevelData.RespawnData
+                        .of(targetWorld.dimension(), targetPos, 0.0f, 0.0f);
+                player.setRespawnPosition(new ServerPlayer.RespawnConfig(sp, true), false);
+                player.teleportTo(targetWorld, targetPos.getX() + 0.5, targetPos.getY(),
                         targetPos.getZ() + 0.5, Set.of(), 0.0f, 0.0f, true);
             }
 
             player.setHealth(player.getMaxHealth());
-            player.getHungerManager().setFoodLevel(20);
-            player.getHungerManager().setSaturationLevel(5.0f);
+            player.getFoodData().setFoodLevel(20);
+            player.getFoodData().setSaturation(5.0f);
 
             CompassTrackingHandler.giveTrackingCompass(player);
 
