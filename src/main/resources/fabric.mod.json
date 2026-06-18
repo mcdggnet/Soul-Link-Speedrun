@@ -10,15 +10,12 @@
 	"contact": {
 		"sources": "https://github.com/zenzty/Soul-Link-Speedrun"
 	},
-	"license": "MIT",
+	"license": "GPL-3.0-or-later",
 	"icon": "assets/soullink/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
 			"net.zenzty.soullink.SoulLink"
-		],
-		"fabric-datagen": [
-			"net.zenzty.soullink.SharedsurvivalDataGenerator"
 		]
 	},
 	"mixins": [
