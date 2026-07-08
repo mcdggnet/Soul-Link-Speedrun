@@ -1,7 +1,9 @@
 package net.zenzty.soullink.server.run;
 
 import java.util.Random;
+import java.util.UUID;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -16,8 +18,6 @@ import net.zenzty.soullink.server.settings.Settings;
 import xyz.nucleoid.fantasy.Fantasy;
 import xyz.nucleoid.fantasy.RuntimeLevelConfig;
 import xyz.nucleoid.fantasy.RuntimeLevelHandle;
-import net.minecraft.resources.Identifier;
-import java.util.UUID;
 
 public class WorldService {
 
@@ -43,59 +43,60 @@ public class WorldService {
     /**
      * The background worker calls this to secretly create worlds for the pool.
      */
-   public PooledRun buildBackgroundWorlds() {
-    long backgroundSeed = new Random().nextLong();
-    Difficulty serverDifficulty = Settings.getInstance().getDifficulty();
-    UUID runId = UUID.randomUUID(); // Generate a unique ID for this specific run
+    public PooledRun buildBackgroundWorlds() {
+        long backgroundSeed = new Random().nextLong();
+        Difficulty serverDifficulty = Settings.getInstance().getDifficulty();
+        UUID runId = UUID.randomUUID(); // Generate a unique ID for this specific run
 
-    // Overworld
-    ServerLevel vanillaOverworld = server.overworld();
-    RuntimeLevelConfig overworldConfig = new RuntimeLevelConfig()
-            .setDimensionType(BuiltinDimensionTypes.OVERWORLD)
-            .setDifficulty(serverDifficulty)
-            .setGameRule(GameRules.ADVANCE_TIME, true)
-            .setSeed(backgroundSeed)
-            .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
-
-    // Switch to Persistent Level
-    Identifier owId = Identifier.fromNamespaceAndPath("soullink", "run_ow_" + runId);
-    RuntimeLevelHandle tempOverworld = fantasy.getOrOpenPersistentLevel(owId, overworldConfig);
-    
-    ServerLevel tempWorld = tempOverworld.asLevel();
-    ServerClockManager clockManager = tempWorld.getServer().clockManager();
-    Holder<WorldClock> clock = tempWorld.dimensionTypeRegistration().value().defaultClock().orElseThrow();
-    clockManager.setTotalTicks(clock, 0L);
-
-    // Nether
-    ServerLevel vanillaNether = server.getLevel(Level.NETHER);
-    RuntimeLevelHandle tempNether = null;
-    if (vanillaNether != null) {
-        RuntimeLevelConfig netherConfig = new RuntimeLevelConfig()
-                .setDimensionType(BuiltinDimensionTypes.NETHER)
+        // Overworld
+        ServerLevel vanillaOverworld = server.overworld();
+        RuntimeLevelConfig overworldConfig = new RuntimeLevelConfig()
+                .setDimensionType(BuiltinDimensionTypes.OVERWORLD)
                 .setDifficulty(serverDifficulty)
+                .setGameRule(GameRules.ADVANCE_TIME, true)
                 .setSeed(backgroundSeed)
-                .setGenerator(vanillaNether.getChunkSource().getGenerator());
-                
-        Identifier netherId = Identifier.fromNamespaceAndPath("soullink", "run_nether_" + runId);
-        tempNether = fantasy.getOrOpenPersistentLevel(netherId, netherConfig);
-    }
+                .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
 
-    // End
-    ServerLevel vanillaEnd = server.getLevel(Level.END);
-    RuntimeLevelHandle tempEnd = null;
-    if (vanillaEnd != null) {
-        RuntimeLevelConfig endConfig = new RuntimeLevelConfig()
-                .setDimensionType(BuiltinDimensionTypes.END)
-                .setDifficulty(serverDifficulty)
-                .setSeed(backgroundSeed)
-                .setGenerator(vanillaEnd.getChunkSource().getGenerator());
-                
-        Identifier endId = Identifier.fromNamespaceAndPath("soullink", "run_end_" + runId);
-        tempEnd = fantasy.getOrOpenPersistentLevel(endId, endConfig);
-    }
+        // Switch to Persistent Level
+        Identifier owId = Identifier.fromNamespaceAndPath("soullink", "run_ow_" + runId);
+        RuntimeLevelHandle tempOverworld = fantasy.getOrOpenPersistentLevel(owId, overworldConfig);
 
-    return new PooledRun(runId, tempOverworld, tempNether, tempEnd, backgroundSeed, null);
-}
+        ServerLevel tempWorld = tempOverworld.asLevel();
+        ServerClockManager clockManager = tempWorld.getServer().clockManager();
+        Holder<WorldClock> clock =
+                tempWorld.dimensionTypeRegistration().value().defaultClock().orElseThrow();
+        clockManager.setTotalTicks(clock, 0L);
+
+        // Nether
+        ServerLevel vanillaNether = server.getLevel(Level.NETHER);
+        RuntimeLevelHandle tempNether = null;
+        if (vanillaNether != null) {
+            RuntimeLevelConfig netherConfig = new RuntimeLevelConfig()
+                    .setDimensionType(BuiltinDimensionTypes.NETHER)
+                    .setDifficulty(serverDifficulty)
+                    .setSeed(backgroundSeed)
+                    .setGenerator(vanillaNether.getChunkSource().getGenerator());
+
+            Identifier netherId = Identifier.fromNamespaceAndPath("soullink", "run_nether_" + runId);
+            tempNether = fantasy.getOrOpenPersistentLevel(netherId, netherConfig);
+        }
+
+        // End
+        ServerLevel vanillaEnd = server.getLevel(Level.END);
+        RuntimeLevelHandle tempEnd = null;
+        if (vanillaEnd != null) {
+            RuntimeLevelConfig endConfig = new RuntimeLevelConfig()
+                    .setDimensionType(BuiltinDimensionTypes.END)
+                    .setDifficulty(serverDifficulty)
+                    .setSeed(backgroundSeed)
+                    .setGenerator(vanillaEnd.getChunkSource().getGenerator());
+
+            Identifier endId = Identifier.fromNamespaceAndPath("soullink", "run_end_" + runId);
+            tempEnd = fantasy.getOrOpenPersistentLevel(endId, endConfig);
+        }
+
+        return new PooledRun(runId, tempOverworld, tempNether, tempEnd, backgroundSeed, null);
+    }
 
     /**
      * When the /start command is executed, WorldService adopts the pooled world.
@@ -181,7 +182,8 @@ public class WorldService {
     public long getCurrentSeed() {
         return currentSeed;
     }
-    public UUID getCurrentRunId() { 
+
+    public UUID getCurrentRunId() {
         return currentRunId;
     }
 
@@ -192,6 +194,7 @@ public class WorldService {
         else if (fromKey.equals(getNetherKey())) return getOverworld();
         return null;
     }
+
     public void restoreRun(UUID runId, long seed) {
         Difficulty serverDifficulty = Settings.getInstance().getDifficulty();
         this.currentSeed = seed;
