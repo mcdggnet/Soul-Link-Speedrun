@@ -125,7 +125,7 @@ public class SettingsGui {
          */
         public void populateItems() {
             // Fill with gray stained glass panes as background
-            ItemStack filler = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+            ItemStack filler = new ItemStack(Items.STAINED_GLASS_PANE.gray());
             filler.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
             for (int i = 0; i < INVENTORY_SIZE; i++) {
                 setItem(i, filler.copy());
@@ -321,7 +321,8 @@ public class SettingsGui {
         }
 
         private ItemStack createSyncedInventoryItem() {
-            ItemStack item = new ItemStack(pendingSyncedInventory ? Items.COPPER_CHEST : Items.CHEST);
+            ItemStack item = new ItemStack(
+                    pendingSyncedInventory ? Items.COPPER_CHEST.weathering().unaffected() : Items.CHEST);
             item.set(
                     DataComponents.CUSTOM_NAME,
                     createItemName("Synced Inventory", ChatFormatting.DARK_AQUA, ChatFormatting.BOLD));

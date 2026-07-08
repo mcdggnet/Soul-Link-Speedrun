@@ -2,7 +2,7 @@ package net.zenzty.soullink.mixin.interaction;
 
 import java.util.Comparator;
 import java.util.Optional;
-import net.minecraft.advancements.CriteriaTriggers;
+import net.minecraft.advancements.triggers.CriteriaTriggers;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.resources.ResourceKey;
@@ -183,7 +183,7 @@ public abstract class NetherPortalMixin {
         BlockState state = world.getBlockState(portalBlockPos);
 
         if (!state.is(Blocks.NETHER_PORTAL)) {
-            return portalBlockPos.getCenter();
+            return Vec3.atCenterOf(portalBlockPos);
         }
 
         // Get the portal axis

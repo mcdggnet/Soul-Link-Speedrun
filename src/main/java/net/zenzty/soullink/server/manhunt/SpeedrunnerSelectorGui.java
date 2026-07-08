@@ -107,7 +107,7 @@ public class SpeedrunnerSelectorGui {
         }
 
         private ItemStack createFillerItem() {
-            ItemStack filler = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+            ItemStack filler = new ItemStack(Items.STAINED_GLASS_PANE.gray());
             filler.set(DataComponents.CUSTOM_NAME, Component.literal(" "));
             return filler;
         }

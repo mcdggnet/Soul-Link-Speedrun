@@ -1,6 +1,7 @@
 package net.zenzty.soullink.server.manhunt;
 
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
@@ -9,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
+import net.minecraft.world.scores.TeamColor;
 import net.zenzty.soullink.SoulLink;
 
 /**
@@ -147,7 +149,7 @@ public class ManhuntManager {
             runnersTeam = scoreboard.addPlayerTeam(RUNNERS_TEAM);
         }
         runnersTeam.setDisplayName(Component.literal("Runners"));
-        runnersTeam.setColor(ChatFormatting.WHITE);
+        runnersTeam.setColor(Optional.of(TeamColor.WHITE));
         runnersTeam.setPlayerPrefix(Component.empty()
                 .append(Component.literal("Runner").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD))
                 .append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY)));
@@ -158,7 +160,7 @@ public class ManhuntManager {
             huntersTeam = scoreboard.addPlayerTeam(HUNTERS_TEAM);
         }
         huntersTeam.setDisplayName(Component.literal("Hunters"));
-        huntersTeam.setColor(ChatFormatting.WHITE);
+        huntersTeam.setColor(Optional.of(TeamColor.WHITE));
         huntersTeam.setPlayerPrefix(Component.empty()
                 .append(Component.literal("Hunter").withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
                 .append(Component.literal(" | ").withStyle(ChatFormatting.DARK_GRAY)));
