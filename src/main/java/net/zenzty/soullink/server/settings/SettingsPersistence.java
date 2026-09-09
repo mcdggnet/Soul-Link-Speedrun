@@ -82,6 +82,9 @@ public final class SettingsPersistence {
         if (data.damageLogEnabled != null) {
             s.setDamageLogEnabled(data.damageLogEnabled);
         }
+        if (data.timerHudEnabled != null) {
+            s.setTimerHudEnabled(data.timerHudEnabled);
+        }
         if (data.difficulty != null && !data.difficulty.isBlank()) {
             try {
                 Difficulty d = Difficulty.valueOf(data.difficulty.toUpperCase());
@@ -111,6 +114,7 @@ public final class SettingsPersistence {
         Settings s = Settings.getInstance();
         SettingsData data = new SettingsData();
         data.damageLogEnabled = s.isDamageLogEnabled();
+        data.timerHudEnabled = s.isTimerHudEnabled();
         // Use pending chaos snapshot if one exists (user confirmed /chaos changes during a run;
         // those apply next run), otherwise use current applied values.
         Settings.SettingsSnapshot chaos = s.getPendingSnapshotOrNull();
@@ -133,6 +137,7 @@ public final class SettingsPersistence {
      */
     private static class SettingsData {
         Boolean damageLogEnabled;
+        Boolean timerHudEnabled;
         String difficulty;
         Boolean halfHeartMode;
         Boolean sharedPotions;

@@ -5,6 +5,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.zenzty.soullink.SoulLink;
+import net.zenzty.soullink.server.settings.Settings;
 
 /**
  * Manages the speedrun timer including start, stop, pause, and time formatting. Tracks player input
@@ -109,7 +110,7 @@ public class TimerService {
                 SoulLink.LOGGER.info("Player input detected! Timer started at 00:00:00");
             } else {
                 // Show ready message - timer at 00:00:00 waiting for input
-                if (server.getTickCount() % 10 == 0) {
+                if (server.getTickCount() % 10 == 0 && Settings.getInstance().isTimerHudEnabled()) {
                     Component readyText = Component.empty()
                             .append(Component.literal("00:00:00").withStyle(ChatFormatting.WHITE))
                             .append(Component.literal(" - Move to start").withStyle(ChatFormatting.GRAY));
@@ -128,7 +129,7 @@ public class TimerService {
         }
 
         // Update action bar every 10 ticks (0.5 seconds) for performance
-        if (server.getTickCount() % 10 == 0) {
+        if (server.getTickCount() % 10 == 0 && Settings.getInstance().isTimerHudEnabled()) {
             Component actionBarText = Component.literal(getFormattedTime()).withStyle(ChatFormatting.WHITE);
 
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {

@@ -33,7 +33,8 @@ public class SettingsInfoGui {
 
     // Slot positions in the GUI (single chest: 9x3 = 27 slots)
     private static final int COMBAT_LOG_SLOT = 10;
-    private static final int BUG_REPORT_SLOT = 13;
+    private static final int TIMER_HUD_SLOT = 12;
+    private static final int BUG_REPORT_SLOT = 14;
     private static final int COMMANDS_SLOT = 16;
     private static final int CLOSE_SLOT = 22; // Center of bottom row
 
@@ -46,9 +47,10 @@ public class SettingsInfoGui {
     public static void open(ServerPlayer player) {
         Settings settings = Settings.getInstance();
         boolean currentDamageLog = settings.isDamageLogEnabled();
+        boolean currentTimerHud = settings.isTimerHudEnabled();
 
         // Create inventory with all slots
-        InfoSettingsInventory inventory = new InfoSettingsInventory(currentDamageLog);
+        InfoSettingsInventory inventory = new InfoSettingsInventory(currentDamageLog, currentTimerHud);
 
         // Open the screen
         player.openMenu(new SimpleMenuProvider(
@@ -76,11 +78,15 @@ public class SettingsInfoGui {
 
         private boolean pendingDamageLog;
         private final boolean originalDamageLog;
+        private boolean pendingTimerHud;
+        private final boolean originalTimerHud;
 
-        public InfoSettingsInventory(boolean originalDamageLog) {
+        public InfoSettingsInventory(boolean originalDamageLog, boolean originalTimerHud) {
             super(INVENTORY_SIZE);
             this.originalDamageLog = originalDamageLog;
             this.pendingDamageLog = originalDamageLog;
+            this.originalTimerHud = originalTimerHud;
+            this.pendingTimerHud = originalTimerHud;
 
             populateItems();
         }
@@ -98,6 +104,9 @@ public class SettingsInfoGui {
 
             // Add combat log setting
             setItem(COMBAT_LOG_SLOT, createCombatLogItem());
+
+            // Add timer HUD setting
+            setItem(TIMER_HUD_SLOT, createTimerHudItem());
 
             // Add bug report button
             setItem(BUG_REPORT_SLOT, createBugReportItem());
@@ -130,6 +139,40 @@ public class SettingsInfoGui {
                     Component.literal("Shows damage notifications in chat")
                             .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
                     Component.literal("when players take damage.")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.empty(),
+                    Component.literal("Click to toggle")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY))));
+            item.set(DataComponents.LORE, lore);
+
+            return item;
+        }
+
+        private ItemStack createTimerHudItem() {
+            ItemStack item = new ItemStack(pendingTimerHud ? Items.CLOCK : Items.BARRIER);
+            item.set(
+                    DataComponents.CUSTOM_NAME,
+                    createItemName("Timer HUD", ChatFormatting.YELLOW, ChatFormatting.BOLD));
+
+            ItemLore lore = new ItemLore(List.of(
+                    Component.literal("Status: ")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.GRAY))
+                            .append(
+                                    pendingTimerHud
+                                            ? Component.literal("ENABLED")
+                                                    .setStyle(Style.EMPTY
+                                                            .withItalic(false)
+                                                            .applyFormat(ChatFormatting.GREEN))
+                                            : Component.literal("DISABLED")
+                                                    .setStyle(Style.EMPTY
+                                                            .withItalic(false)
+                                                            .applyFormat(ChatFormatting.RED))),
+                    Component.empty(),
+                    Component.literal("Shows the run timer in the action bar.")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.literal("The timer keeps running either way;")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.literal("/runinfo still shows it.")
                             .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
                     Component.empty(),
                     Component.literal("Click to toggle")
@@ -212,7 +255,7 @@ public class SettingsInfoGui {
         }
 
         public boolean hasChanges() {
-            return pendingDamageLog != originalDamageLog;
+            return pendingDamageLog != originalDamageLog || pendingTimerHud != originalTimerHud;
         }
 
         public boolean isPendingDamageLog() {
@@ -221,6 +264,22 @@ public class SettingsInfoGui {
 
         public void toggleDamageLog() {
             pendingDamageLog = !pendingDamageLog;
+        }
+
+        public boolean isPendingTimerHud() {
+            return pendingTimerHud;
+        }
+
+        public boolean timerHudChanged() {
+            return pendingTimerHud != originalTimerHud;
+        }
+
+        public boolean damageLogChanged() {
+            return pendingDamageLog != originalDamageLog;
+        }
+
+        public void toggleTimerHud() {
+            pendingTimerHud = !pendingTimerHud;
         }
     }
 
@@ -309,6 +368,11 @@ public class SettingsInfoGui {
                     settingsInventory.populateItems();
                     playClickSound();
                 }
+                case TIMER_HUD_SLOT -> {
+                    settingsInventory.toggleTimerHud();
+                    settingsInventory.populateItems();
+                    playClickSound();
+                }
                 case BUG_REPORT_SLOT -> {
                     final String discordUrl = "https://discord.gg/7KkZP2r62H";
                     player.sendSystemMessage(RunManager.formatMessage("Report bugs and get support in our Discord:"));
@@ -344,17 +408,23 @@ public class SettingsInfoGui {
                 }
                 case CLOSE_SLOT -> {
                     if (settingsInventory.hasChanges()) {
-                        // Apply the changes immediately (damage log can be
-                        // toggled anytime)
+                        // Apply the changes immediately (both can be toggled anytime)
                         Settings.getInstance().setDamageLogEnabled(settingsInventory.isPendingDamageLog());
+                        Settings.getInstance().setTimerHudEnabled(settingsInventory.isPendingTimerHud());
                         confirmed = true;
                         MinecraftServer server = RunManager.getInstance().getServer();
                         if (server != null) {
                             SettingsPersistence.save(server);
                         }
 
-                        player.sendSystemMessage(RunManager.formatMessage("Combat log "
-                                + (settingsInventory.isPendingDamageLog() ? "enabled" : "disabled") + "."));
+                        if (settingsInventory.damageLogChanged()) {
+                            player.sendSystemMessage(RunManager.formatMessage("Combat log "
+                                    + (settingsInventory.isPendingDamageLog() ? "enabled" : "disabled") + "."));
+                        }
+                        if (settingsInventory.timerHudChanged()) {
+                            player.sendSystemMessage(RunManager.formatMessage("Timer HUD "
+                                    + (settingsInventory.isPendingTimerHud() ? "enabled" : "disabled") + "."));
+                        }
 
                         player.closeContainer();
                         playConfirmSound();

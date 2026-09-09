@@ -21,6 +21,7 @@ public class Settings {
     private boolean manhuntMode = false;
     private boolean syncedInventory = false;
     private boolean damageLogEnabled = true; // Combat log - can be toggled immediately
+    private boolean timerHudEnabled = true; // Action bar timer - can be toggled immediately
 
     // Pending settings to be applied on next run
     private SettingsSnapshot pendingSnapshot = null;
@@ -130,6 +131,21 @@ public class Settings {
 
     public void setDamageLogEnabled(boolean damageLogEnabled) {
         this.damageLogEnabled = damageLogEnabled;
+    }
+
+    // ==================== TIMER HUD ====================
+
+    /**
+     * Whether the run timer is shown in the action bar. The timer itself always runs; this only
+     * controls the HUD text ("00:00:00 - Move to start" and the elapsed time). /runinfo and the
+     * final time are unaffected.
+     */
+    public boolean isTimerHudEnabled() {
+        return timerHudEnabled;
+    }
+
+    public void setTimerHudEnabled(boolean timerHudEnabled) {
+        this.timerHudEnabled = timerHudEnabled;
     }
 
     // ==================== UTILITY ====================
