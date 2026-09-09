@@ -88,6 +88,9 @@ public final class SettingsPersistence {
         if (data.hardcoreHearts != null) {
             s.setHardcoreHearts(data.hardcoreHearts);
         }
+        if (data.joinMessagesEnabled != null) {
+            s.setJoinMessagesEnabled(data.joinMessagesEnabled);
+        }
         if (data.difficulty != null && !data.difficulty.isBlank()) {
             try {
                 Difficulty d = Difficulty.valueOf(data.difficulty.toUpperCase());
@@ -119,6 +122,7 @@ public final class SettingsPersistence {
         data.damageLogEnabled = s.isDamageLogEnabled();
         data.timerHudEnabled = s.isTimerHudEnabled();
         data.hardcoreHearts = s.isHardcoreHearts();
+        data.joinMessagesEnabled = s.isJoinMessagesEnabled();
         // Use pending chaos snapshot if one exists (user confirmed /chaos changes during a run;
         // those apply next run), otherwise use current applied values.
         Settings.SettingsSnapshot chaos = s.getPendingSnapshotOrNull();
@@ -143,6 +147,7 @@ public final class SettingsPersistence {
         Boolean damageLogEnabled;
         Boolean timerHudEnabled;
         Boolean hardcoreHearts;
+        Boolean joinMessagesEnabled;
         String difficulty;
         Boolean halfHeartMode;
         Boolean sharedPotions;

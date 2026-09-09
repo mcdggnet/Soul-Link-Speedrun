@@ -23,6 +23,7 @@ public class Settings {
     private boolean damageLogEnabled = true; // Combat log - can be toggled immediately
     private boolean timerHudEnabled = true; // Action bar timer - can be toggled immediately
     private boolean hardcoreHearts = false; // Hardcore-style hearts on clients - applies on (re)join
+    private boolean joinMessagesEnabled = true; // Welcome / how-to chat text on join - immediate
 
     // Pending settings to be applied on next run
     private SettingsSnapshot pendingSnapshot = null;
@@ -163,6 +164,21 @@ public class Settings {
 
     public void setHardcoreHearts(boolean hardcoreHearts) {
         this.hardcoreHearts = hardcoreHearts;
+    }
+
+    // ==================== JOIN MESSAGES ====================
+
+    /**
+     * Whether a joining player gets the welcome text (what Soul Link is, /start, the /chaos tip)
+     * and the "run has ended" notice. Off for servers whose players already know the drill; the
+     * action bar still shows the /start hint between runs either way.
+     */
+    public boolean isJoinMessagesEnabled() {
+        return joinMessagesEnabled;
+    }
+
+    public void setJoinMessagesEnabled(boolean joinMessagesEnabled) {
+        this.joinMessagesEnabled = joinMessagesEnabled;
     }
 
     // ==================== UTILITY ====================

@@ -35,8 +35,9 @@ public class SettingsInfoGui {
     private static final int COMBAT_LOG_SLOT = 10;
     private static final int TIMER_HUD_SLOT = 12;
     private static final int HARDCORE_HEARTS_SLOT = 14;
-    private static final int BUG_REPORT_SLOT = 16;
-    private static final int COMMANDS_SLOT = 20;
+    private static final int JOIN_MESSAGES_SLOT = 16;
+    private static final int BUG_REPORT_SLOT = 20;
+    private static final int COMMANDS_SLOT = 24;
     private static final int CLOSE_SLOT = 22; // Center of bottom row
 
     // Size of single chest
@@ -50,10 +51,11 @@ public class SettingsInfoGui {
         boolean currentDamageLog = settings.isDamageLogEnabled();
         boolean currentTimerHud = settings.isTimerHudEnabled();
         boolean currentHardcoreHearts = settings.isHardcoreHearts();
+        boolean currentJoinMessages = settings.isJoinMessagesEnabled();
 
         // Create inventory with all slots
-        InfoSettingsInventory inventory =
-                new InfoSettingsInventory(currentDamageLog, currentTimerHud, currentHardcoreHearts);
+        InfoSettingsInventory inventory = new InfoSettingsInventory(
+                currentDamageLog, currentTimerHud, currentHardcoreHearts, currentJoinMessages);
 
         // Open the screen
         player.openMenu(new SimpleMenuProvider(
@@ -85,9 +87,14 @@ public class SettingsInfoGui {
         private final boolean originalTimerHud;
         private boolean pendingHardcoreHearts;
         private final boolean originalHardcoreHearts;
+        private boolean pendingJoinMessages;
+        private final boolean originalJoinMessages;
 
         public InfoSettingsInventory(
-                boolean originalDamageLog, boolean originalTimerHud, boolean originalHardcoreHearts) {
+                boolean originalDamageLog,
+                boolean originalTimerHud,
+                boolean originalHardcoreHearts,
+                boolean originalJoinMessages) {
             super(INVENTORY_SIZE);
             this.originalDamageLog = originalDamageLog;
             this.pendingDamageLog = originalDamageLog;
@@ -95,6 +102,8 @@ public class SettingsInfoGui {
             this.pendingTimerHud = originalTimerHud;
             this.originalHardcoreHearts = originalHardcoreHearts;
             this.pendingHardcoreHearts = originalHardcoreHearts;
+            this.originalJoinMessages = originalJoinMessages;
+            this.pendingJoinMessages = originalJoinMessages;
 
             populateItems();
         }
@@ -118,6 +127,9 @@ public class SettingsInfoGui {
 
             // Add hardcore hearts setting
             setItem(HARDCORE_HEARTS_SLOT, createHardcoreHeartsItem());
+
+            // Add join messages setting
+            setItem(JOIN_MESSAGES_SLOT, createJoinMessagesItem());
 
             // Add bug report button
             setItem(BUG_REPORT_SLOT, createBugReportItem());
@@ -227,6 +239,38 @@ public class SettingsInfoGui {
             return item;
         }
 
+        private ItemStack createJoinMessagesItem() {
+            ItemStack item = new ItemStack(pendingJoinMessages ? Items.PAPER : Items.MAP);
+            item.set(
+                    DataComponents.CUSTOM_NAME,
+                    createItemName("Join Messages", ChatFormatting.AQUA, ChatFormatting.BOLD));
+
+            ItemLore lore = new ItemLore(List.of(
+                    Component.literal("Status: ")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.GRAY))
+                            .append(
+                                    pendingJoinMessages
+                                            ? Component.literal("ENABLED")
+                                                    .setStyle(Style.EMPTY
+                                                            .withItalic(false)
+                                                            .applyFormat(ChatFormatting.GREEN))
+                                            : Component.literal("DISABLED")
+                                                    .setStyle(Style.EMPTY
+                                                            .withItalic(false)
+                                                            .applyFormat(ChatFormatting.RED))),
+                    Component.empty(),
+                    Component.literal("Sends the welcome text and /start, /chaos")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.literal("tips in chat when a player joins.")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.empty(),
+                    Component.literal("Click to toggle")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY))));
+            item.set(DataComponents.LORE, lore);
+
+            return item;
+        }
+
         private ItemStack createBugReportItem() {
             ItemStack item = new ItemStack(Items.KNOWLEDGE_BOOK);
             item.set(
@@ -302,7 +346,8 @@ public class SettingsInfoGui {
         public boolean hasChanges() {
             return pendingDamageLog != originalDamageLog
                     || pendingTimerHud != originalTimerHud
-                    || pendingHardcoreHearts != originalHardcoreHearts;
+                    || pendingHardcoreHearts != originalHardcoreHearts
+                    || pendingJoinMessages != originalJoinMessages;
         }
 
         public boolean isPendingDamageLog() {
@@ -339,6 +384,18 @@ public class SettingsInfoGui {
 
         public void toggleHardcoreHearts() {
             pendingHardcoreHearts = !pendingHardcoreHearts;
+        }
+
+        public boolean isPendingJoinMessages() {
+            return pendingJoinMessages;
+        }
+
+        public boolean joinMessagesChanged() {
+            return pendingJoinMessages != originalJoinMessages;
+        }
+
+        public void toggleJoinMessages() {
+            pendingJoinMessages = !pendingJoinMessages;
         }
     }
 
@@ -437,6 +494,11 @@ public class SettingsInfoGui {
                     settingsInventory.populateItems();
                     playClickSound();
                 }
+                case JOIN_MESSAGES_SLOT -> {
+                    settingsInventory.toggleJoinMessages();
+                    settingsInventory.populateItems();
+                    playClickSound();
+                }
                 case BUG_REPORT_SLOT -> {
                     final String discordUrl = "https://discord.gg/7KkZP2r62H";
                     player.sendSystemMessage(RunManager.formatMessage("Report bugs and get support in our Discord:"));
@@ -476,6 +538,7 @@ public class SettingsInfoGui {
                         Settings.getInstance().setDamageLogEnabled(settingsInventory.isPendingDamageLog());
                         Settings.getInstance().setTimerHudEnabled(settingsInventory.isPendingTimerHud());
                         Settings.getInstance().setHardcoreHearts(settingsInventory.isPendingHardcoreHearts());
+                        Settings.getInstance().setJoinMessagesEnabled(settingsInventory.isPendingJoinMessages());
                         confirmed = true;
                         MinecraftServer server = RunManager.getInstance().getServer();
                         if (server != null) {
@@ -494,6 +557,10 @@ public class SettingsInfoGui {
                             player.sendSystemMessage(RunManager.formatMessage("Hardcore hearts "
                                     + (settingsInventory.isPendingHardcoreHearts() ? "enabled" : "disabled")
                                     + ". Players see it when they next join."));
+                        }
+                        if (settingsInventory.joinMessagesChanged()) {
+                            player.sendSystemMessage(RunManager.formatMessage("Join messages "
+                                    + (settingsInventory.isPendingJoinMessages() ? "enabled" : "disabled") + "."));
                         }
 
                         player.closeContainer();

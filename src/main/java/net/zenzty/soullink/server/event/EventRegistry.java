@@ -137,7 +137,9 @@ public class EventRegistry {
 
                 switch (state) {
                     case IDLE:
-                        sendWelcomeMessage(player);
+                        if (Settings.getInstance().isJoinMessagesEnabled()) {
+                            sendWelcomeMessage(player);
+                        }
                         break;
 
                     case GENERATING_WORLD:
@@ -157,8 +159,10 @@ public class EventRegistry {
                         break;
 
                     case GAMEOVER:
-                        player.sendSystemMessage(
-                                RunManager.formatMessage("Run has ended. Use /start to begin a new run."));
+                        if (Settings.getInstance().isJoinMessagesEnabled()) {
+                            player.sendSystemMessage(
+                                    RunManager.formatMessage("Run has ended. Use /start to begin a new run."));
+                        }
                         break;
                 }
             });
