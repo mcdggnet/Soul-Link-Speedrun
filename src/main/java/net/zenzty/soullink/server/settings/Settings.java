@@ -22,6 +22,7 @@ public class Settings {
     private boolean syncedInventory = false;
     private boolean damageLogEnabled = true; // Combat log - can be toggled immediately
     private boolean timerHudEnabled = true; // Action bar timer - can be toggled immediately
+    private boolean hardcoreHearts = false; // Hardcore-style hearts on clients - applies on (re)join
 
     // Pending settings to be applied on next run
     private SettingsSnapshot pendingSnapshot = null;
@@ -146,6 +147,22 @@ public class Settings {
 
     public void setTimerHudEnabled(boolean timerHudEnabled) {
         this.timerHudEnabled = timerHudEnabled;
+    }
+
+    // ==================== HARDCORE HEARTS ====================
+
+    /**
+     * Whether clients are told the world is hardcore, which makes them draw the hardcore heart
+     * texture. Nothing else about hardcore applies: the world is not hardcore and death is handled
+     * by the run as usual. The flag travels in the login packet, so it takes effect for each player
+     * when they next join.
+     */
+    public boolean isHardcoreHearts() {
+        return hardcoreHearts;
+    }
+
+    public void setHardcoreHearts(boolean hardcoreHearts) {
+        this.hardcoreHearts = hardcoreHearts;
     }
 
     // ==================== UTILITY ====================

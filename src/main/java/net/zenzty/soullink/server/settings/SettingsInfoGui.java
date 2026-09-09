@@ -34,8 +34,9 @@ public class SettingsInfoGui {
     // Slot positions in the GUI (single chest: 9x3 = 27 slots)
     private static final int COMBAT_LOG_SLOT = 10;
     private static final int TIMER_HUD_SLOT = 12;
-    private static final int BUG_REPORT_SLOT = 14;
-    private static final int COMMANDS_SLOT = 16;
+    private static final int HARDCORE_HEARTS_SLOT = 14;
+    private static final int BUG_REPORT_SLOT = 16;
+    private static final int COMMANDS_SLOT = 20;
     private static final int CLOSE_SLOT = 22; // Center of bottom row
 
     // Size of single chest
@@ -48,9 +49,11 @@ public class SettingsInfoGui {
         Settings settings = Settings.getInstance();
         boolean currentDamageLog = settings.isDamageLogEnabled();
         boolean currentTimerHud = settings.isTimerHudEnabled();
+        boolean currentHardcoreHearts = settings.isHardcoreHearts();
 
         // Create inventory with all slots
-        InfoSettingsInventory inventory = new InfoSettingsInventory(currentDamageLog, currentTimerHud);
+        InfoSettingsInventory inventory =
+                new InfoSettingsInventory(currentDamageLog, currentTimerHud, currentHardcoreHearts);
 
         // Open the screen
         player.openMenu(new SimpleMenuProvider(
@@ -80,13 +83,18 @@ public class SettingsInfoGui {
         private final boolean originalDamageLog;
         private boolean pendingTimerHud;
         private final boolean originalTimerHud;
+        private boolean pendingHardcoreHearts;
+        private final boolean originalHardcoreHearts;
 
-        public InfoSettingsInventory(boolean originalDamageLog, boolean originalTimerHud) {
+        public InfoSettingsInventory(
+                boolean originalDamageLog, boolean originalTimerHud, boolean originalHardcoreHearts) {
             super(INVENTORY_SIZE);
             this.originalDamageLog = originalDamageLog;
             this.pendingDamageLog = originalDamageLog;
             this.originalTimerHud = originalTimerHud;
             this.pendingTimerHud = originalTimerHud;
+            this.originalHardcoreHearts = originalHardcoreHearts;
+            this.pendingHardcoreHearts = originalHardcoreHearts;
 
             populateItems();
         }
@@ -107,6 +115,9 @@ public class SettingsInfoGui {
 
             // Add timer HUD setting
             setItem(TIMER_HUD_SLOT, createTimerHudItem());
+
+            // Add hardcore hearts setting
+            setItem(HARDCORE_HEARTS_SLOT, createHardcoreHeartsItem());
 
             // Add bug report button
             setItem(BUG_REPORT_SLOT, createBugReportItem());
@@ -173,6 +184,40 @@ public class SettingsInfoGui {
                     Component.literal("The timer keeps running either way;")
                             .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
                     Component.literal("/runinfo still shows it.")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.empty(),
+                    Component.literal("Click to toggle")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY))));
+            item.set(DataComponents.LORE, lore);
+
+            return item;
+        }
+
+        private ItemStack createHardcoreHeartsItem() {
+            ItemStack item = new ItemStack(pendingHardcoreHearts ? Items.WITHER_ROSE : Items.POPPY);
+            item.set(
+                    DataComponents.CUSTOM_NAME,
+                    createItemName("Hardcore Hearts", ChatFormatting.DARK_RED, ChatFormatting.BOLD));
+
+            ItemLore lore = new ItemLore(List.of(
+                    Component.literal("Status: ")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.GRAY))
+                            .append(
+                                    pendingHardcoreHearts
+                                            ? Component.literal("ENABLED")
+                                                    .setStyle(Style.EMPTY
+                                                            .withItalic(false)
+                                                            .applyFormat(ChatFormatting.GREEN))
+                                            : Component.literal("DISABLED")
+                                                    .setStyle(Style.EMPTY
+                                                            .withItalic(false)
+                                                            .applyFormat(ChatFormatting.RED))),
+                    Component.empty(),
+                    Component.literal("Draws the hardcore heart texture.")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.literal("Cosmetic only; the world is not hardcore.")
+                            .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
+                    Component.literal("Applies when a player next joins.")
                             .setStyle(Style.EMPTY.withItalic(false).applyFormat(ChatFormatting.DARK_GRAY)),
                     Component.empty(),
                     Component.literal("Click to toggle")
@@ -255,7 +300,9 @@ public class SettingsInfoGui {
         }
 
         public boolean hasChanges() {
-            return pendingDamageLog != originalDamageLog || pendingTimerHud != originalTimerHud;
+            return pendingDamageLog != originalDamageLog
+                    || pendingTimerHud != originalTimerHud
+                    || pendingHardcoreHearts != originalHardcoreHearts;
         }
 
         public boolean isPendingDamageLog() {
@@ -280,6 +327,18 @@ public class SettingsInfoGui {
 
         public void toggleTimerHud() {
             pendingTimerHud = !pendingTimerHud;
+        }
+
+        public boolean isPendingHardcoreHearts() {
+            return pendingHardcoreHearts;
+        }
+
+        public boolean hardcoreHeartsChanged() {
+            return pendingHardcoreHearts != originalHardcoreHearts;
+        }
+
+        public void toggleHardcoreHearts() {
+            pendingHardcoreHearts = !pendingHardcoreHearts;
         }
     }
 
@@ -373,6 +432,11 @@ public class SettingsInfoGui {
                     settingsInventory.populateItems();
                     playClickSound();
                 }
+                case HARDCORE_HEARTS_SLOT -> {
+                    settingsInventory.toggleHardcoreHearts();
+                    settingsInventory.populateItems();
+                    playClickSound();
+                }
                 case BUG_REPORT_SLOT -> {
                     final String discordUrl = "https://discord.gg/7KkZP2r62H";
                     player.sendSystemMessage(RunManager.formatMessage("Report bugs and get support in our Discord:"));
@@ -411,6 +475,7 @@ public class SettingsInfoGui {
                         // Apply the changes immediately (both can be toggled anytime)
                         Settings.getInstance().setDamageLogEnabled(settingsInventory.isPendingDamageLog());
                         Settings.getInstance().setTimerHudEnabled(settingsInventory.isPendingTimerHud());
+                        Settings.getInstance().setHardcoreHearts(settingsInventory.isPendingHardcoreHearts());
                         confirmed = true;
                         MinecraftServer server = RunManager.getInstance().getServer();
                         if (server != null) {
@@ -424,6 +489,11 @@ public class SettingsInfoGui {
                         if (settingsInventory.timerHudChanged()) {
                             player.sendSystemMessage(RunManager.formatMessage("Timer HUD "
                                     + (settingsInventory.isPendingTimerHud() ? "enabled" : "disabled") + "."));
+                        }
+                        if (settingsInventory.hardcoreHeartsChanged()) {
+                            player.sendSystemMessage(RunManager.formatMessage("Hardcore hearts "
+                                    + (settingsInventory.isPendingHardcoreHearts() ? "enabled" : "disabled")
+                                    + ". Players see it when they next join."));
                         }
 
                         player.closeContainer();

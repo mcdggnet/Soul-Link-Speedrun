@@ -22,6 +22,7 @@
 		"ui.SlotMixin",
 		"ui.ArmorSlotMixin",
 		"ui.ServerPlayNetworkHandlerSyncMixin",
+		"server.PlayerListMixin",
 		"server.ServerWorldAccessor",
 		"server.EnderDragonFightAccessor",
 		"server.RaidAccessor",
