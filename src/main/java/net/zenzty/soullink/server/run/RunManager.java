@@ -69,11 +69,12 @@ public class RunManager {
     private static final int WORLD_RESET_DELAY_TICKS = 20 * 20;
     private long worldResetNotBefore = 0;
 
+    /**
+     * The chat prefix: the DGG emote name "ALARMA", unstyled so the DGG Chat client mod turns it
+     * into the emote glyph. A vanilla client just sees the word.
+     */
     public static Component getPrefix() {
-        return Component.empty()
-                .append(Component.literal("[").withStyle(ChatFormatting.DARK_GRAY))
-                .append(Component.literal("SoulLink").withStyle(ChatFormatting.RED))
-                .append(Component.literal("] ").withStyle(ChatFormatting.DARK_GRAY));
+        return Component.literal("ALARMA ");
     }
 
     public static Component formatMessage(String message) {
