@@ -20,6 +20,8 @@ public class Settings {
     private boolean sharedJumping = false;
     private boolean manhuntMode = false;
     private boolean syncedInventory = false;
+    private boolean worldReset = true; // Fresh world each run; death ends the run
+    private boolean serverMode = false; // Always-on mechanics in the normal worlds, no runs
     private boolean damageLogEnabled = true; // Combat log - can be toggled immediately
     private boolean timerHudEnabled = true; // Action bar timer - can be toggled immediately
     private boolean hardcoreHearts = false; // Hardcore-style hearts on clients - applies on (re)join
@@ -94,6 +96,12 @@ public class Settings {
      * compasses.
      */
     public boolean isManhuntMode() {
+        // Manhunt is a run format; there are no runs in Server Mode.
+        return manhuntMode && !serverMode;
+    }
+
+    /** The stored Manhunt value regardless of Server Mode, for the menu and the save file. */
+    public boolean isManhuntModeSetting() {
         return manhuntMode;
     }
 
@@ -123,6 +131,41 @@ public class Settings {
 
     public void setSyncedInventory(boolean syncedInventory) {
         this.syncedInventory = syncedInventory;
+    }
+
+    // ==================== WORLD RESET ====================
+
+    /**
+     * Whether a run lives in a throwaway world. On (the classic mode): any death ends the run for
+     * everyone and the next /start builds a brand new world. Off: a death kills the whole group at
+     * once, everything they carried lands in one pile where the victim fell, everyone respawns at the
+     * run spawn and the run carries on in the same world; /start after a victory or /stoprun restarts
+     * in that same world too. Applies on the next run like the other run settings.
+     */
+    public boolean isWorldReset() {
+        return worldReset;
+    }
+
+    public void setWorldReset(boolean worldReset) {
+        this.worldReset = worldReset;
+    }
+
+    // ==================== SERVER MODE ====================
+
+    /**
+     * Whether Soul Link runs as an always-on server instead of a speedrun. On: the mod keeps one
+     * persistent world of its own (overworld, nether, end) that survives restarts, everyone plays in
+     * it with the shared mechanics all the time, and there is no /start, no timer and no victory
+     * screen. World Reset still decides what a death does: on, everyone dies and a fresh world is
+     * generated; off, everyone dies, drops their items in one pile and respawns in the same world.
+     * Switched from /settings when no speedrun is active; RunManager handles the transition.
+     */
+    public boolean isServerMode() {
+        return serverMode;
+    }
+
+    public void setServerMode(boolean serverMode) {
+        this.serverMode = serverMode;
     }
 
     // ==================== DAMAGE LOG ====================
@@ -169,7 +212,7 @@ public class Settings {
     // ==================== JOIN MESSAGES ====================
 
     /**
-     * Whether a joining player gets the welcome text (what Soul Link is, /start, the /chaos tip)
+     * Whether a joining player gets the welcome text (what Soul Link is, /start, the /settings tip)
      * and the "run has ended" notice. Off for servers whose players already know the drill; the
      * action bar still shows the /start hint between runs either way.
      */
@@ -184,8 +227,8 @@ public class Settings {
     // ==================== UTILITY ====================
 
     /**
-     * Returns the pending snapshot if one exists (changes confirmed in /chaos during an active
-     * run). Used by the Chaos GUI to pre-fill with pending values so the player sees what is
+     * Returns the pending snapshot if one exists (changes confirmed in /settings during an active
+     * run). Used by the settings menu to pre-fill with pending values so the player sees what is
      * already queued instead of the in-memory (current-run) values.
      */
     public SettingsSnapshot getPendingSnapshotOrNull() {
@@ -197,7 +240,7 @@ public class Settings {
      */
     public SettingsSnapshot createSnapshot() {
         return new SettingsSnapshot(
-                difficulty, halfHeartMode, sharedPotions, sharedJumping, manhuntMode, syncedInventory);
+                difficulty, halfHeartMode, sharedPotions, sharedJumping, manhuntMode, syncedInventory, worldReset);
     }
 
     /**
@@ -206,8 +249,10 @@ public class Settings {
      */
     public void applySnapshot(SettingsSnapshot snapshot) {
         // Check if a run is active
+        // Server Mode has no "next run": its world is always running, so changes apply now.
         RunManager runManager = RunManager.getInstance();
-        boolean runActive = runManager != null
+        boolean runActive = !serverMode
+                && runManager != null
                 && (runManager.getGameState() == RunState.RUNNING
                         || runManager.getGameState() == RunState.GENERATING_WORLD);
 
@@ -243,15 +288,17 @@ public class Settings {
         this.sharedJumping = snapshot.sharedJumping();
         this.manhuntMode = snapshot.manhuntMode();
         this.syncedInventory = snapshot.syncedInventory();
+        this.worldReset = snapshot.worldReset();
 
         SoulLink.LOGGER.info(
-                "Settings applied: Difficulty={}, HalfHeart={}, SharedPotions={}, SharedJumping={}, Manhunt={}, SyncedInventory={}",
+                "Settings applied: Difficulty={}, HalfHeart={}, SharedPotions={}, SharedJumping={}, Manhunt={}, SyncedInventory={}, WorldReset={}",
                 difficulty,
                 halfHeartMode,
                 sharedPotions,
                 sharedJumping,
                 manhuntMode,
-                syncedInventory);
+                syncedInventory,
+                worldReset);
     }
 
     /**
@@ -274,5 +321,6 @@ public class Settings {
             boolean sharedPotions,
             boolean sharedJumping,
             boolean manhuntMode,
-            boolean syncedInventory) {}
+            boolean syncedInventory,
+            boolean worldReset) {}
 }

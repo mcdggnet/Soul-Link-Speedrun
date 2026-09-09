@@ -48,8 +48,8 @@ public final class SettingsPersistence {
     }
 
     /**
-     * Saves current settings to the world save. Call when settings are changed (e.g. from /settings
-     * or /chaos) or on SERVER_STOPPING as a safety net.
+     * Saves current settings to the world save. Call when settings are changed (from /settings) or
+     * on SERVER_STOPPING as a safety net.
      */
     public static void save(MinecraftServer server) {
         Path path = getSettingsPath(server);
@@ -114,6 +114,12 @@ public final class SettingsPersistence {
         if (data.syncedInventory != null) {
             s.setSyncedInventory(data.syncedInventory);
         }
+        if (data.worldReset != null) {
+            s.setWorldReset(data.worldReset);
+        }
+        if (data.serverMode != null) {
+            s.setServerMode(data.serverMode);
+        }
     }
 
     private static SettingsData fromSettings() {
@@ -135,6 +141,8 @@ public final class SettingsPersistence {
         data.sharedJumping = chaos.sharedJumping();
         data.manhuntMode = chaos.manhuntMode();
         data.syncedInventory = chaos.syncedInventory();
+        data.worldReset = chaos.worldReset();
+        data.serverMode = s.isServerMode();
         return data;
     }
 
@@ -154,5 +162,7 @@ public final class SettingsPersistence {
         Boolean sharedJumping;
         Boolean manhuntMode;
         Boolean syncedInventory;
+        Boolean worldReset;
+        Boolean serverMode;
     }
 }

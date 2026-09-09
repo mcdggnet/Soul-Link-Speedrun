@@ -32,6 +32,27 @@ dependencies {
 	implementation include("xyz.nucleoid:fantasy:${project.fantasy_version}")
 }
 
+// Local test rig: one dev server and two dev clients that can all run at once, each
+// in its own directory. The clients carry fixed offline names and connect to the dev
+// server straight away. Nothing here affects the built jar.
+loom {
+	runs {
+		server {
+			runDir "run/server"
+		}
+		client {
+			runDir "run/client1"
+			programArgs "--username", "Tester1", "--quickPlayMultiplayer", "localhost:25565"
+		}
+		client2 {
+			client()
+			name "Minecraft Client 2"
+			runDir "run/client2"
+			programArgs "--username", "Tester2", "--quickPlayMultiplayer", "localhost:25565"
+		}
+	}
+}
+
 processResources {
 	inputs.property "version", project.version
 

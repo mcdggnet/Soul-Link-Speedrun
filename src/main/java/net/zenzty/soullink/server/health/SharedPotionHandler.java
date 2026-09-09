@@ -135,7 +135,7 @@ public class SharedPotionHandler {
             return true;
         }
 
-        if (!runManager.isTemporaryWorld(player.level().dimension())) {
+        if (!runManager.isRunWorld(player.level().dimension())) {
             return true;
         }
 
@@ -305,7 +305,7 @@ public class SharedPotionHandler {
                 if (otherPlayer == sourcePlayer) continue;
 
                 ServerLevel otherWorld = otherPlayer.level();
-                if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                 // Apply a copy of the effect to the other player
                 MobEffectInstance effectCopy = new MobEffectInstance(

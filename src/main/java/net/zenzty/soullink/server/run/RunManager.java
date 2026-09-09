@@ -23,8 +23,10 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.clock.ServerClockManager;
 import net.minecraft.world.clock.WorldClock;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.raid.Raid;
 import net.minecraft.world.entity.raid.Raids;
 import net.minecraft.world.level.GameType;
@@ -36,6 +38,7 @@ import net.zenzty.soullink.mixin.server.RaidAccessor;
 import net.zenzty.soullink.mixin.server.RaidManagerAccessor;
 import net.zenzty.soullink.server.event.EventRegistry;
 import net.zenzty.soullink.server.health.SharedStatsHandler;
+import net.zenzty.soullink.server.inventory.SharedInventoryHandler;
 import net.zenzty.soullink.server.manhunt.CompassTrackingHandler;
 import net.zenzty.soullink.server.manhunt.ManhuntManager;
 import net.zenzty.soullink.server.settings.Settings;
@@ -54,8 +57,17 @@ public class RunManager {
     // Pool Manager
     private final WorldPoolManager poolManager;
 
+    // Server Mode: the persistent world's bookkeeping
+    private final ServerWorldStore serverWorldStore;
+    private ServerWorldStore.ServerWorldState serverWorld;
+
     private volatile RunState gameState = RunState.IDLE;
     private volatile boolean endInitialized = false;
+    // World Reset off: a group death is being processed (drop, countdown, respawn).
+    private volatile boolean groupDeathInProgress = false;
+    // Server Mode world reset: the new world opens no earlier than this tick, so a death can sink in.
+    private static final int WORLD_RESET_DELAY_TICKS = 20 * 20;
+    private long worldResetNotBefore = 0;
 
     public static Component getPrefix() {
         return Component.empty()
@@ -95,6 +107,7 @@ public class RunManager {
         this.spawnFinder = new SpawnFinder();
         this.teleportService = new PlayerTeleportService(server);
         this.poolManager = new WorldPoolManager(this.worldService);
+        this.serverWorldStore = new ServerWorldStore(server);
     }
 
     public static synchronized void init(MinecraftServer server) {
@@ -119,7 +132,12 @@ public class RunManager {
             CompassTrackingHandler.reset();
             currentInstance.poolManager.cleanup();
             currentInstance.worldService.deleteOldWorlds();
-            currentInstance.deleteWorlds(true);
+            if (Settings.getInstance().isServerMode()) {
+                // The server world is persistent: leave it (and the players in it) exactly as is.
+                currentInstance.worldService.detachCurrentWorlds();
+            } else {
+                currentInstance.deleteWorlds(true);
+            }
             instance = null;
         }
     }
@@ -131,6 +149,10 @@ public class RunManager {
     // ==================== RUN LIFECYCLE ====================
 
     public void startRun() {
+        if (Settings.getInstance().isServerMode()) {
+            SoulLink.LOGGER.warn("Attempted to start a run while Server Mode is on");
+            return;
+        }
         if (gameState == RunState.RUNNING || gameState == RunState.GENERATING_WORLD) {
             SoulLink.LOGGER.warn("Attempted to start run while already running or generating!");
             return;
@@ -146,25 +168,40 @@ public class RunManager {
             ManhuntManager.getInstance().resetRoles();
         }
 
+        // World Reset off and a world already exists (after a victory, /stoprun or /reset):
+        // start the new attempt in that world instead of swapping in a fresh one.
+        boolean keepWorld = !Settings.getInstance().isWorldReset()
+                && worldService.getOverworld() != null
+                && spawnFinder.hasFoundSpawn();
+
         clearEnderDragonBossbar();
         clearRaidBossbars();
-        worldService.saveCurrentWorldsAsOld();
+        groupDeathInProgress = false;
 
-        // Get world from storage
-        PooledRun nextRun = poolManager.claimNextRun();
+        PooledRun nextRun = null;
+        if (!keepWorld) {
+            worldService.saveCurrentWorldsAsOld();
+            // Get world from storage
+            nextRun = poolManager.claimNextRun();
+        }
 
         SharedStatsHandler.reset();
         if (Settings.getInstance().isSyncedInventory()) {
             net.zenzty.soullink.server.inventory.SharedInventoryHandler.reset();
         }
-        endInitialized = false;
+        if (!keepWorld) {
+            endInitialized = false;
+        }
         timerService.reset();
 
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             player.setGameMode(GameType.SPECTATOR);
         }
 
-        if (nextRun != null) {
+        if (keepWorld) {
+            SoulLink.LOGGER.info("World Reset is off: restarting the run in the current world");
+            transitionToRunning();
+        } else if (nextRun != null) {
             // STORAGE FULL -> INSTANT START
             worldService.adoptPooledRun(nextRun);
             spawnFinder.injectSpawnPos(nextRun.spawnPos());
@@ -180,15 +217,43 @@ public class RunManager {
     }
 
     public void tick() {
-        poolManager.tick(server);
+        boolean serverMode = Settings.getInstance().isServerMode();
+        if (!serverMode) {
+            poolManager.tick(server);
+        }
 
         if (gameState == RunState.GENERATING_WORLD) {
-            PooledRun nextRun = poolManager.claimNextRun();
-            if (nextRun != null) {
-                worldService.adoptPooledRun(nextRun);
-                spawnFinder.injectSpawnPos(nextRun.spawnPos());
-                transitionToRunning();
-            } else if (server.getTickCount() % 10 == 0) {
+            if (serverMode) {
+                // The server world is generated in place (not pooled): wait for its spawn search,
+                // and after a death also for the pause, so everyone can see what happened.
+                boolean ready = spawnFinder.isSearchComplete() && serverWorld != null;
+                long remainingTicks = worldResetNotBefore - server.getTickCount();
+                if (ready && remainingTicks <= 0) {
+                    serverWorld = serverWorld.withSpawn(spawnFinder.getSpawnPos());
+                    serverWorldStore.save(serverWorld);
+                    transitionToRunning();
+                    return;
+                }
+                if (ready && server.getTickCount() % 10 == 0) {
+                    long seconds = (remainingTicks + 19) / 20;
+                    Component countdown = Component.empty()
+                            .append(Component.literal("New world in ").withStyle(ChatFormatting.GRAY))
+                            .append(Component.literal(seconds + "s").withStyle(ChatFormatting.WHITE));
+                    for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                        player.sendOverlayMessage(countdown);
+                    }
+                    return;
+                }
+            } else {
+                PooledRun nextRun = poolManager.claimNextRun();
+                if (nextRun != null) {
+                    worldService.adoptPooledRun(nextRun);
+                    spawnFinder.injectSpawnPos(nextRun.spawnPos());
+                    transitionToRunning();
+                    return;
+                }
+            }
+            if (server.getTickCount() % 10 == 0) {
                 Component statusText = Component.empty()
                         .append(Component.literal("⟳ ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal("Generating new world...").withStyle(ChatFormatting.GRAY));
@@ -201,7 +266,7 @@ public class RunManager {
 
         if (gameState != RunState.RUNNING) {
             // No run: keep a hint where the timer would be, so a fresh join knows what to do.
-            if (server.getTickCount() % 10 == 0) {
+            if (server.getTickCount() % 10 == 0 && !serverMode) {
                 Component idleText = Component.empty()
                         .append(Component.literal("Use ").withStyle(ChatFormatting.GRAY))
                         .append(Component.literal("/start").withStyle(ChatFormatting.GREEN))
@@ -224,7 +289,10 @@ public class RunManager {
             clockManager.addTicks(clock, 1);
         }
 
-        timerService.tick(server, this::isInRun, this::shouldSkipTimerActionBarFor);
+        // No timer in Server Mode.
+        if (!serverMode) {
+            timerService.tick(server, this::isInRun, this::shouldSkipTimerActionBarFor);
+        }
     }
 
     private boolean shouldSkipTimerActionBarFor(ServerPlayer p) {
@@ -392,12 +460,286 @@ public class RunManager {
         }
     }
 
+    /**
+     * A Soul Link participant reached zero health. With World Reset on this is the end of the run;
+     * with it off the whole group dies together and respawns (see EventRegistry.handleGroupDeath).
+     * Callers that want the death message shown in the reset case broadcast it themselves, as they
+     * did before; the group-death path broadcasts its own.
+     */
+    public void handleRunnerDeath(ServerPlayer victim, DamageSource source) {
+        if (!isRunActive()) return;
+        if (!Settings.getInstance().isWorldReset()) {
+            requestGroupDeath(victim, source);
+            return;
+        }
+        if (Settings.getInstance().isServerMode()) {
+            resetServerWorld(victim, source);
+        } else {
+            triggerGameOver();
+        }
+    }
+
+    /**
+     * Queues a group death for the next tick. Deferred because deaths surface from inside the damage
+     * pipeline (and sometimes inside the shared-health sync loop), where dropping items and changing
+     * game modes is not safe. Everyone at zero health is propped up until then so nobody is removed as
+     * a corpse in the meantime. Only one group death runs at a time; further deaths in the same tick
+     * fold into it.
+     */
+    private synchronized void requestGroupDeath(ServerPlayer victim, DamageSource source) {
+        if (!isRunActive() || groupDeathInProgress) return;
+        groupDeathInProgress = true;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (player.getHealth() <= 0.0f) {
+                player.setHealth(1.0f);
+            }
+        }
+        SoulLink.LOGGER.info("Group death queued (victim {})", victim.getName().getString());
+        EventRegistry.scheduleDelayed(1, () -> EventRegistry.handleGroupDeath(victim, source, this));
+    }
+
+    public boolean isGroupDeathInProgress() {
+        return groupDeathInProgress;
+    }
+
+    public void finishGroupDeath() {
+        groupDeathInProgress = false;
+    }
+
+    // ==================== SERVER MODE ====================
+
+    /**
+     * Opens the persistent server world (reopening the stored one, or generating the first) and
+     * puts everyone in it. Called at server start when Server Mode is on, and when it is turned on.
+     */
+    public synchronized void openServerWorld() {
+        if (!Settings.getInstance().isServerMode()) return;
+        if (gameState == RunState.RUNNING || gameState == RunState.GENERATING_WORLD) return;
+
+        EventRegistry.clearDelayedTasks();
+        groupDeathInProgress = false;
+        SharedStatsHandler.reset();
+        SharedInventoryHandler.reset();
+        timerService.reset();
+
+        ServerWorldStore.ServerWorldState stored = serverWorldStore.load();
+        if (stored == null) {
+            SoulLink.LOGGER.info("Server Mode: no server world yet, generating one");
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                player.setGameMode(GameType.SPECTATOR);
+            }
+            generateServerWorld();
+            return;
+        }
+
+        SoulLink.LOGGER.info(
+                "Server Mode: reopening server world generation {} (seed {})", stored.generation(), stored.seed());
+        serverWorld = stored;
+        worldService.adoptPooledRun(worldService.buildServerWorlds(stored.generation(), stored.seed()));
+        // The runtime End keeps no fight data across restarts; it is rebuilt on the next visit.
+        endInitialized = false;
+
+        if (stored.spawn() == null) {
+            ServerLevel overworld = worldService.getOverworld();
+            if (overworld == null) return;
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                player.setGameMode(GameType.SPECTATOR);
+            }
+            spawnFinder.startSearch(overworld);
+            gameState = RunState.GENERATING_WORLD;
+            return;
+        }
+
+        spawnFinder.injectSpawnPos(stored.spawn());
+        ServerLevel overworld = worldService.getOverworld();
+        if (overworld != null) {
+            teleportService.forceloadSpawnChunks(overworld, stored.spawn());
+        }
+        gameState = RunState.RUNNING;
+        for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
+            if (!isInRun(player)) {
+                teleportPlayerToRun(player);
+            }
+        }
+    }
+
+    /** Builds the next generation of the server world and starts its spawn search. */
+    private void generateServerWorld() {
+        int generation = serverWorld != null ? serverWorld.generation() + 1 : 1;
+        long seed = new java.util.Random().nextLong();
+        serverWorld = new ServerWorldStore.ServerWorldState(generation, seed, null);
+        serverWorldStore.save(serverWorld);
+
+        worldService.adoptPooledRun(worldService.buildServerWorlds(generation, seed));
+        endInitialized = false;
+        ServerLevel overworld = worldService.getOverworld();
+        if (overworld != null) {
+            spawnFinder.startSearch(overworld);
+        }
+        gameState = RunState.GENERATING_WORLD;
+        server.getPlayerList().broadcastSystemMessage(formatMessage("Generating world..."), true);
+        SoulLink.LOGGER.info("Server Mode: generating server world generation {} (seed {})", generation, seed);
+    }
+
+    /**
+     * Server Mode with World Reset on: a death ends the world. Everyone is told, parked as a
+     * spectator, and a fresh world is generated; the old one is deleted once the new one is ready.
+     * Also what /stoprun does in Server Mode (victim and source null).
+     */
+    public synchronized void resetServerWorld(ServerPlayer victim, DamageSource source) {
+        if (!Settings.getInstance().isServerMode() || gameState != RunState.RUNNING) return;
+
+        SoulLink.LOGGER.info("Server Mode: world reset ({})", victim != null ? "death" : "command");
+        EventRegistry.clearDelayedTasks();
+        groupDeathInProgress = false;
+
+        if (victim != null && source != null) {
+            server.getPlayerList()
+                    .broadcastSystemMessage(
+                            Component.empty()
+                                    .append(getPrefix())
+                                    .append(Component.literal("☠ ").withStyle(ChatFormatting.DARK_RED))
+                                    .append(source.getLocalizedDeathMessage(victim)
+                                            .copy()
+                                            .withStyle(ChatFormatting.RED)),
+                            false);
+        }
+        server.getPlayerList()
+                .broadcastSystemMessage(
+                        formatMessage(
+                                victim != null
+                                        ? "Everyone died. The world is being reset."
+                                        : "The world is being reset."),
+                        false);
+
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            if (!isInRun(player)) continue;
+            player.setGameMode(GameType.SPECTATOR);
+            player.getInventory().clearContent();
+            player.setHealth(player.getMaxHealth());
+            player.clearFire();
+            ServerLevel world = getPlayerWorld(player);
+            if (world != null) {
+                world.playSound(
+                        null,
+                        player.getX(),
+                        player.getY(),
+                        player.getZ(),
+                        SoundEvents.WITHER_DEATH,
+                        SoundSource.PLAYERS,
+                        0.5f,
+                        0.8f);
+            }
+            player.connection.send(new ClientboundSetTitlesAnimationPacket(5, 40, 10));
+            player.connection.send(new ClientboundSetTitleTextPacket(
+                    Component.literal(victim != null ? "EVERYONE DIED" : "WORLD RESET")
+                            .withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
+            player.connection.send(new ClientboundSetSubtitleTextPacket(
+                    Component.literal("A new world is on its way").withStyle(ChatFormatting.GRAY)));
+        }
+
+        clearEnderDragonBossbar();
+        clearRaidBossbars();
+        SharedStatsHandler.reset();
+        SharedInventoryHandler.reset();
+        worldService.saveCurrentWorldsAsOld();
+        worldResetNotBefore = server.getTickCount() + WORLD_RESET_DELAY_TICKS;
+        generateServerWorld();
+    }
+
+    /**
+     * Turns Server Mode on. Refused while a speedrun is running or generating. Any leftover run
+     * world is torn down, then the server world is opened (resumed if one exists on disk).
+     * The caller flips Settings.serverMode before calling this when it returns true; the check
+     * here is on the raw run state so it works either way.
+     */
+    public synchronized boolean enterServerMode() {
+        if (gameState == RunState.RUNNING || gameState == RunState.GENERATING_WORLD) {
+            return false;
+        }
+        SoulLink.LOGGER.info("Entering Server Mode");
+        EventRegistry.clearDelayedTasks();
+        groupDeathInProgress = false;
+        ManhuntManager.getInstance().cleanupTeams(server);
+        CompassTrackingHandler.reset();
+        clearEnderDragonBossbar();
+        clearRaidBossbars();
+        deleteWorlds(true);
+        worldService.deleteOldWorlds();
+        timerService.reset();
+        gameState = RunState.IDLE;
+        Settings.getInstance().setServerMode(true);
+        openServerWorld();
+        return true;
+    }
+
+    /**
+     * Turns Server Mode off. Players are moved to the normal spawn with what they carry; the server
+     * world is unloaded but stays on disk, so turning the mode back on resumes it.
+     */
+    public synchronized void leaveServerMode() {
+        SoulLink.LOGGER.info("Leaving Server Mode");
+        EventRegistry.clearDelayedTasks();
+        groupDeathInProgress = false;
+        for (ServerPlayer player : List.copyOf(server.getPlayerList().getPlayers())) {
+            if (isInRun(player)) {
+                teleportService.teleportToVanillaSpawn(player);
+            }
+            if (player.isSpectator()) {
+                player.setGameMode(GameType.SURVIVAL);
+            }
+            var maxHealthAttr = player.getAttribute(Attributes.MAX_HEALTH);
+            if (maxHealthAttr != null) {
+                maxHealthAttr.setBaseValue(20.0);
+            }
+            player.connection.send(new net.minecraft.network.protocol.game.ClientboundClearTitlesPacket(false));
+        }
+        worldService.unloadCurrentWorlds();
+        spawnFinder.reset();
+        endInitialized = false;
+        gameState = RunState.IDLE;
+        Settings.getInstance().setServerMode(false);
+        SharedStatsHandler.reset();
+    }
+
+    /**
+     * Run-scoped settings normally take effect when a run starts. In Server Mode the world is
+     * always running, so the ones with live state are applied here as soon as they change.
+     * Difficulty is baked into the worlds when they are generated, so it waits for the next reset.
+     */
+    public void applyServerModeSettings(
+            ServerPlayer changedBy, Settings.SettingsSnapshot before, Settings.SettingsSnapshot after) {
+        if (after.halfHeartMode() != before.halfHeartMode()) {
+            SharedStatsHandler.reset();
+            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                if (!isInRun(player)) continue;
+                var maxHealthAttr = player.getAttribute(Attributes.MAX_HEALTH);
+                if (maxHealthAttr != null) {
+                    maxHealthAttr.setBaseValue(after.halfHeartMode() ? 1.0 : 20.0);
+                }
+                SharedStatsHandler.syncPlayerToSharedStats(player);
+            }
+        }
+        if (after.syncedInventory() && !before.syncedInventory()) {
+            // Seed the shared inventory from whoever turned it on, so nobody's items vanish.
+            SharedInventoryHandler.reset();
+            SharedInventoryHandler.syncFromPlayerToAll(changedBy);
+        }
+    }
+
     public synchronized void triggerGameOver() {
         if (gameState != RunState.RUNNING) return;
+
+        if (Settings.getInstance().isServerMode()) {
+            // Nothing ends in Server Mode; the nearest thing is a fresh world.
+            resetServerWorld(null, null);
+            return;
+        }
 
         SoulLink.LOGGER.info("Game Over triggered!");
         timerService.stop();
         gameState = RunState.GAMEOVER;
+        groupDeathInProgress = false;
 
         ManhuntManager.getInstance().cleanupTeams(server);
         CompassTrackingHandler.reset();
@@ -449,9 +791,17 @@ public class RunManager {
     public synchronized void triggerVictory() {
         if (gameState != RunState.RUNNING) return;
 
+        if (Settings.getInstance().isServerMode()) {
+            // No run to finish: say it happened and play on.
+            SoulLink.LOGGER.info("Server Mode: dragon defeated");
+            server.getPlayerList().broadcastSystemMessage(formatMessage("The Ender Dragon has been defeated!"), false);
+            return;
+        }
+
         SoulLink.LOGGER.info("Victory! Dragon defeated!");
         timerService.stop();
         gameState = RunState.GAMEOVER;
+        groupDeathInProgress = false;
 
         ManhuntManager.getInstance().cleanupTeams(server);
         CompassTrackingHandler.reset();
@@ -506,7 +856,15 @@ public class RunManager {
 
     private boolean isInRun(ServerPlayer player) {
         ServerLevel world = getPlayerWorld(player);
-        return world != null && isTemporaryWorld(world.dimension());
+        return world != null && isRunWorld(world.dimension());
+    }
+
+    /**
+     * Whether the shared mechanics apply in this world: the run's worlds, which in Server Mode are
+     * the persistent server worlds. Same set as isTemporaryWorld; named for what callers mean.
+     */
+    public boolean isRunWorld(ResourceKey<Level> worldKey) {
+        return isTemporaryWorld(worldKey);
     }
 
     private void clearEnderDragonBossbar() {
@@ -555,6 +913,7 @@ public class RunManager {
         return gameState;
     }
 
+    /** Whether the shared mechanics are live: a run (or the Server Mode world) is running. */
     public boolean isRunActive() {
         return gameState == RunState.RUNNING;
     }

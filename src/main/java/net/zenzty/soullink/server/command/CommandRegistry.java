@@ -13,10 +13,9 @@ import net.zenzty.soullink.server.manhunt.SpeedrunnerSelectorGui;
 import net.zenzty.soullink.server.run.RunManager;
 import net.zenzty.soullink.server.settings.Settings;
 import net.zenzty.soullink.server.settings.SettingsGui;
-import net.zenzty.soullink.server.settings.SettingsInfoGui;
 
 /**
- * Registers all mod commands: /start, /stoprun, /runinfo, /settings, /chaos, /reset
+ * Registers all mod commands: /start, /stoprun, /runinfo, /settings, /reset
  */
 public class CommandRegistry {
 
@@ -37,12 +36,7 @@ public class CommandRegistry {
             // /runinfo - Display current run info
             dispatcher.register(Commands.literal("runinfo").executes(CommandRegistry::handleRunInfo));
 
-            // /chaos - Open the chaos settings GUI (difficulty, half
-            // heart, etc.)
-            dispatcher.register(Commands.literal("chaos").executes(CommandRegistry::handleChaos));
-
-            // /settings - Open the info settings GUI (combat log, bug
-            // report, commands)
+            // /settings - The one settings menu (saves on close)
             dispatcher.register(Commands.literal("settings").executes(CommandRegistry::handleSettings));
 
             // /reset - Manually reset the current run
@@ -61,6 +55,11 @@ public class CommandRegistry {
 
         if (runManager == null) {
             context.getSource().sendFailure(RunManager.formatMessage("Run manager not initialized."));
+            return 0;
+        }
+
+        if (Settings.getInstance().isServerMode()) {
+            context.getSource().sendFailure(serverModeNotice());
             return 0;
         }
 
@@ -90,6 +89,16 @@ public class CommandRegistry {
             return 0;
         }
 
+        if (Settings.getInstance().isServerMode()) {
+            // No run to stop; the admin equivalent is a fresh server world.
+            if (runManager == null || !runManager.isRunActive()) {
+                context.getSource().sendFailure(RunManager.formatMessage("The server world is not ready yet."));
+                return 0;
+            }
+            runManager.resetServerWorld(null, null);
+            return Command.SINGLE_SUCCESS;
+        }
+
         if (runManager == null || !runManager.isRunActive()) {
             context.getSource().sendFailure(RunManager.formatMessage("No active run."));
             return 0;
@@ -116,12 +125,22 @@ public class CommandRegistry {
             return 0;
         }
 
+        boolean serverMode = Settings.getInstance().isServerMode();
         Component info = Component.empty()
                 .append(RunManager.getPrefix())
                 .append(Component.literal("State: ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(runManager.getGameState().name()).withStyle(ChatFormatting.WHITE))
-                .append(Component.literal(" | Time: ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(runManager.getFormattedTime()).withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(
+                                serverMode
+                                        ? "SERVER MODE"
+                                        : runManager.getGameState().name())
+                        .withStyle(ChatFormatting.WHITE))
+                .append(
+                        serverMode
+                                ? Component.empty()
+                                : Component.empty()
+                                        .append(Component.literal(" | Time: ").withStyle(ChatFormatting.GRAY))
+                                        .append(Component.literal(runManager.getFormattedTime())
+                                                .withStyle(ChatFormatting.WHITE)))
                 .append(Component.literal(" | Health: ").withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(String.format("%.1f", SharedStatsHandler.getSharedHealth()))
                         .withStyle(ChatFormatting.WHITE))
@@ -134,7 +153,7 @@ public class CommandRegistry {
         return Command.SINGLE_SUCCESS;
     }
 
-    private static int handleChaos(CommandContext<CommandSourceStack> context) {
+    private static int handleSettings(CommandContext<CommandSourceStack> context) {
         if (context.getSource().getEntity() instanceof ServerPlayer player) {
             SettingsGui.open(player);
             return Command.SINGLE_SUCCESS;
@@ -143,13 +162,9 @@ public class CommandRegistry {
         return 0;
     }
 
-    private static int handleSettings(CommandContext<CommandSourceStack> context) {
-        if (context.getSource().getEntity() instanceof ServerPlayer player) {
-            SettingsInfoGui.open(player);
-            return Command.SINGLE_SUCCESS;
-        }
-        context.getSource().sendFailure(RunManager.formatMessage("Only players can use this command."));
-        return 0;
+    private static Component serverModeNotice() {
+        return RunManager.formatMessage(
+                "Server Mode is on: Soul Link is always active and there are no runs. Turn it off in /settings.");
     }
 
     private static int handleReset(CommandContext<CommandSourceStack> context) {
@@ -158,6 +173,11 @@ public class CommandRegistry {
             runManager = RunManager.getInstance();
         } catch (IllegalStateException e) {
             context.getSource().sendFailure(RunManager.formatMessage("Run manager not initialized."));
+            return 0;
+        }
+
+        if (Settings.getInstance().isServerMode()) {
+            context.getSource().sendFailure(serverModeNotice());
             return 0;
         }
 

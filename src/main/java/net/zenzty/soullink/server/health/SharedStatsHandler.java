@@ -145,7 +145,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(damagedPlayer);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         isSyncing = true;
         try {
@@ -165,8 +165,8 @@ public class SharedStatsHandler {
 
             // Check for death condition
             if (sharedHealth <= 0) {
-                SoulLink.LOGGER.info("Shared health depleted - triggering game over");
-                runManager.triggerGameOver();
+                SoulLink.LOGGER.info("Shared health depleted - runner death");
+                runManager.handleRunnerDeath(damagedPlayer, damageSource);
                 return;
             }
 
@@ -203,7 +203,7 @@ public class SharedStatsHandler {
                     ServerLevel otherWorld = getPlayerWorld(player);
                     if (otherWorld == null) continue;
 
-                    if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                    if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                     // Apply actual damage to trigger all client-side effects (red flash, screen
                     // shake, sound)
@@ -249,7 +249,7 @@ public class SharedStatsHandler {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player)) continue;
             ServerLevel world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
+            if (world != null && runManager.isRunWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -279,7 +279,7 @@ public class SharedStatsHandler {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 if (!shouldParticipateInSoulLink(player)) continue;
                 ServerLevel otherWorld = getPlayerWorld(player);
-                if (otherWorld == null || !runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                if (otherWorld == null || !runManager.isRunWorld(otherWorld.dimension())) continue;
 
                 player.setHealth(sharedHealth);
             }
@@ -288,7 +288,8 @@ public class SharedStatsHandler {
                     "[DAMAGE DEBUG] Applied {} periodic damage: {} -> {}", damageToApply, oldHealth, sharedHealth);
 
             if (sharedHealth <= 0) {
-                runManager.triggerGameOver();
+                runManager.handleRunnerDeath(
+                        damagedPlayer, damagedPlayer.damageSources().generic());
             }
         } else {
             // Revert the damage to the player since it hasn't reached the threshold yet
@@ -313,7 +314,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(healedPlayer);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         isSyncing = true;
         try {
@@ -334,7 +335,7 @@ public class SharedStatsHandler {
                     ServerLevel otherWorld = getPlayerWorld(player);
                     if (otherWorld == null) continue;
 
-                    if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                    if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                     player.setHealth(sharedHealth);
                 }
@@ -364,7 +365,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(regenPlayer);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         MinecraftServer server = runManager.getServer();
         if (server == null) return;
@@ -373,7 +374,7 @@ public class SharedStatsHandler {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player)) continue;
             ServerLevel world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
+            if (world != null && runManager.isRunWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -410,7 +411,7 @@ public class SharedStatsHandler {
                         ServerLevel otherWorld = getPlayerWorld(player);
                         if (otherWorld == null) continue;
 
-                        if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                        if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                         player.setHealth(sharedHealth);
                     }
@@ -445,7 +446,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(changedPlayer);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         if (Math.abs(newAbsorption - sharedAbsorption) < 0.1f) return;
 
@@ -464,7 +465,7 @@ public class SharedStatsHandler {
                 ServerLevel otherWorld = getPlayerWorld(player);
                 if (otherWorld == null) continue;
 
-                if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                 player.setAbsorptionAmount(sharedAbsorption);
             }
@@ -496,7 +497,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(regenPlayer);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         MinecraftServer server = runManager.getServer();
         if (server == null) return;
@@ -505,7 +506,7 @@ public class SharedStatsHandler {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player)) continue;
             ServerLevel world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
+            if (world != null && runManager.isRunWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -542,7 +543,7 @@ public class SharedStatsHandler {
                         ServerLevel otherWorld = getPlayerWorld(player);
                         if (otherWorld == null) continue;
 
-                        if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                        if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                         player.setHealth(sharedHealth);
                     }
@@ -573,7 +574,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(player);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         isSyncing = true;
         try {
@@ -597,7 +598,7 @@ public class SharedStatsHandler {
                 ServerLevel otherWorld = getPlayerWorld(otherPlayer);
                 if (otherWorld == null) continue;
 
-                if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                 otherPlayer.getFoodData().setFoodLevel(sharedHunger);
                 otherPlayer.getFoodData().setSaturation(sharedSaturation);
@@ -626,7 +627,7 @@ public class SharedStatsHandler {
         ServerLevel playerWorld = getPlayerWorld(drainPlayer);
         if (playerWorld == null) return;
 
-        if (!runManager.isTemporaryWorld(playerWorld.dimension())) return;
+        if (!runManager.isRunWorld(playerWorld.dimension())) return;
 
         MinecraftServer server = runManager.getServer();
         if (server == null) return;
@@ -635,7 +636,7 @@ public class SharedStatsHandler {
         for (ServerPlayer player : server.getPlayerList().getPlayers()) {
             if (!shouldParticipateInSoulLink(player)) continue;
             ServerLevel world = getPlayerWorld(player);
-            if (world != null && runManager.isTemporaryWorld(world.dimension())) {
+            if (world != null && runManager.isRunWorld(world.dimension())) {
                 playerCount++;
             }
         }
@@ -674,7 +675,7 @@ public class SharedStatsHandler {
                     ServerLevel otherWorld = getPlayerWorld(player);
                     if (otherWorld == null) continue;
 
-                    if (!runManager.isTemporaryWorld(otherWorld.dimension())) continue;
+                    if (!runManager.isRunWorld(otherWorld.dimension())) continue;
 
                     player.getFoodData().setFoodLevel(sharedHunger);
                     player.getFoodData().setSaturation(sharedSaturation);
@@ -710,7 +711,7 @@ public class SharedStatsHandler {
                 ServerLevel playerWorld = getPlayerWorld(player);
                 if (playerWorld == null) continue;
 
-                if (!runManager.isTemporaryWorld(playerWorld.dimension())) continue;
+                if (!runManager.isRunWorld(playerWorld.dimension())) continue;
 
                 float playerHealth = player.getHealth();
                 float playerAbsorption = player.getAbsorptionAmount();
@@ -802,7 +803,7 @@ public class SharedStatsHandler {
                 ServerLevel playerWorld = getPlayerWorld(player);
                 if (playerWorld == null) continue;
 
-                if (runManager.isTemporaryWorld(playerWorld.dimension())) {
+                if (runManager.isRunWorld(playerWorld.dimension())) {
                     // Skip spectators and creative mode players for health sync
                     if (player.isSpectator() || player.isCreative()) {
                         continue;

@@ -50,7 +50,7 @@ public class SharedJumpHandler {
             return;
         }
 
-        if (!runManager.isTemporaryWorld(player.level().dimension())) {
+        if (!runManager.isRunWorld(player.level().dimension())) {
             return;
         }
 
@@ -116,7 +116,7 @@ public class SharedJumpHandler {
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {
                 // Skip players not in the run
                 ServerLevel playerWorld = player.level();
-                if (playerWorld == null || !runManager.isTemporaryWorld(playerWorld.dimension())) {
+                if (playerWorld == null || !runManager.isRunWorld(playerWorld.dimension())) {
                     continue;
                 }
 

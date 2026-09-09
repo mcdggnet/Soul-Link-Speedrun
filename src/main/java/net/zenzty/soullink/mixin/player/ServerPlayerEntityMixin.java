@@ -45,11 +45,25 @@ public abstract class ServerPlayerEntityMixin {
             return;
         }
 
+        ci.cancel();
+
+        if (!Settings.getInstance().isWorldReset() || Settings.getInstance().isServerMode()) {
+            // Group death (World Reset off) or a Server Mode world reset: neither is a game over.
+            // Keep the player alive here; RunManager announces the death and takes it from there.
+            SoulLink.LOGGER.info(
+                    "Player {} died during active run - handled by RunManager (worldReset={}, serverMode={})",
+                    player.getName().getString(),
+                    Settings.getInstance().isWorldReset(),
+                    Settings.getInstance().isServerMode());
+            player.setHealth(player.getMaxHealth());
+            player.clearFire();
+            runManager.handleRunnerDeath(player, damageSource);
+            return;
+        }
+
         SoulLink.LOGGER.info(
                 "Player {} died during active run - triggering game over",
                 player.getName().getString());
-
-        ci.cancel();
 
         Component deathMessage = damageSource.getLocalizedDeathMessage(player);
         Component formattedDeathMessage = Component.empty()

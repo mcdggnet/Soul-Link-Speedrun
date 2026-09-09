@@ -54,7 +54,7 @@ public abstract class HungerManagerMixin {
         // Get the player's world - ServerPlayerEntity.getEntityWorld() returns ServerWorld directly
         ServerLevel serverWorld = player.level();
 
-        if (!runManager.isTemporaryWorld(serverWorld.dimension())) {
+        if (!runManager.isRunWorld(serverWorld.dimension())) {
             previousFoodLevel = this.foodLevel;
             previousSaturation = this.saturationLevel;
             return;

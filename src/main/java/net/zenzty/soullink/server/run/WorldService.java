@@ -2,6 +2,7 @@ package net.zenzty.soullink.server.run;
 
 import java.util.Random;
 import net.minecraft.core.Holder;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -85,6 +86,82 @@ public class WorldService {
         }
 
         return new PooledRun(tempOverworld, tempNether, tempEnd, backgroundSeed, null);
+    }
+
+    /**
+     * Server Mode's worlds: the same three dimensions, but persistent. Fantasy keeps their files in
+     * the world save under keys derived from the generation number, so calling this again after a
+     * restart with the same generation and seed reopens the same world. A fresh generation is a
+     * fresh world; the previous one is deleted like an old run.
+     */
+    public PooledRun buildServerWorlds(int generation, long seed) {
+        Difficulty serverDifficulty = Settings.getInstance().getDifficulty();
+        String prefix = "server" + generation + "_";
+
+        ServerLevel vanillaOverworld = server.overworld();
+        RuntimeLevelConfig overworldConfig = new RuntimeLevelConfig()
+                .setDimensionType(BuiltinDimensionTypes.OVERWORLD)
+                .setDifficulty(serverDifficulty)
+                .setGameRule(GameRules.ADVANCE_TIME, true)
+                .setSeed(seed)
+                .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
+        RuntimeLevelHandle overworld = fantasy.getOrOpenPersistentLevel(
+                Identifier.fromNamespaceAndPath("soullink", prefix + "overworld"), overworldConfig);
+
+        RuntimeLevelHandle nether = null;
+        ServerLevel vanillaNether = server.getLevel(Level.NETHER);
+        if (vanillaNether != null) {
+            RuntimeLevelConfig netherConfig = new RuntimeLevelConfig()
+                    .setDimensionType(BuiltinDimensionTypes.NETHER)
+                    .setDifficulty(serverDifficulty)
+                    .setSeed(seed)
+                    .setGenerator(vanillaNether.getChunkSource().getGenerator());
+            nether = fantasy.getOrOpenPersistentLevel(
+                    Identifier.fromNamespaceAndPath("soullink", prefix + "nether"), netherConfig);
+        }
+
+        RuntimeLevelHandle end = null;
+        ServerLevel vanillaEnd = server.getLevel(Level.END);
+        if (vanillaEnd != null) {
+            RuntimeLevelConfig endConfig = new RuntimeLevelConfig()
+                    .setDimensionType(BuiltinDimensionTypes.END)
+                    .setDifficulty(serverDifficulty)
+                    .setSeed(seed)
+                    .setGenerator(vanillaEnd.getChunkSource().getGenerator());
+            end = fantasy.getOrOpenPersistentLevel(
+                    Identifier.fromNamespaceAndPath("soullink", prefix + "end"), endConfig);
+        }
+
+        return new PooledRun(overworld, nether, end, seed, null);
+    }
+
+    /**
+     * Forgets the current worlds without deleting them (they stay loaded until the server stops,
+     * and persistent ones stay on disk). Used when the server stops in Server Mode.
+     */
+    public void detachCurrentWorlds() {
+        overworldHandle = null;
+        netherHandle = null;
+        endHandle = null;
+    }
+
+    /** Unloads the current worlds, keeping persistent ones on disk. Used when leaving Server Mode. */
+    public void unloadCurrentWorlds() {
+        safeUnloadWorld(overworldHandle, "server overworld");
+        safeUnloadWorld(netherHandle, "server nether");
+        safeUnloadWorld(endHandle, "server end");
+        detachCurrentWorlds();
+    }
+
+    private void safeUnloadWorld(RuntimeLevelHandle handle, String worldName) {
+        if (handle != null) {
+            try {
+                handle.unload();
+                SoulLink.LOGGER.info("Unloaded {}", worldName);
+            } catch (Exception e) {
+                SoulLink.LOGGER.error("Failed to unload {}", worldName, e);
+            }
+        }
     }
 
     /**
