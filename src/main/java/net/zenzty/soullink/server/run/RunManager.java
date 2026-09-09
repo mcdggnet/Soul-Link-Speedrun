@@ -200,6 +200,16 @@ public class RunManager {
         }
 
         if (gameState != RunState.RUNNING) {
+            // No run: keep a hint where the timer would be, so a fresh join knows what to do.
+            if (server.getTickCount() % 10 == 0) {
+                Component idleText = Component.empty()
+                        .append(Component.literal("Use ").withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal("/start").withStyle(ChatFormatting.GREEN))
+                        .append(Component.literal(" to begin Soul Link").withStyle(ChatFormatting.GRAY));
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    player.sendOverlayMessage(idleText);
+                }
+            }
             return;
         }
 
