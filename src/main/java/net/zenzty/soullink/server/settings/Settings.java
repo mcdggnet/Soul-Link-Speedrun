@@ -15,6 +15,7 @@ public class Settings {
 
     // Current active settings (used during runs)
     private Difficulty difficulty = Difficulty.NORMAL;
+    private boolean sharedHealth = true; // Off = everyone keeps their own health/hunger; deaths still shared
     private boolean halfHeartMode = false;
     private boolean sharedPotions = false;
     private boolean sharedJumping = false;
@@ -56,6 +57,22 @@ public class Settings {
             case NORMAL -> Difficulty.HARD;
             case HARD -> Difficulty.EASY;
         };
+    }
+
+    // ==================== SHARED HEALTH ====================
+
+    /**
+     * Whether health, hunger, saturation and absorption are one pool for the whole group (the
+     * classic Soul Link). Off means everyone has their own bars and only death is linked: when
+     * anyone dies, everyone does, handled exactly as before (run over, item-pile group death or
+     * world reset, per World Reset / Server Mode). Shared potions and jumps are separate settings.
+     */
+    public boolean isSharedHealth() {
+        return sharedHealth;
+    }
+
+    public void setSharedHealth(boolean sharedHealth) {
+        this.sharedHealth = sharedHealth;
     }
 
     // ==================== HALF HEART MODE ====================
@@ -240,7 +257,14 @@ public class Settings {
      */
     public SettingsSnapshot createSnapshot() {
         return new SettingsSnapshot(
-                difficulty, halfHeartMode, sharedPotions, sharedJumping, manhuntMode, syncedInventory, worldReset);
+                difficulty,
+                halfHeartMode,
+                sharedPotions,
+                sharedJumping,
+                manhuntMode,
+                syncedInventory,
+                worldReset,
+                sharedHealth);
     }
 
     /**
@@ -289,16 +313,18 @@ public class Settings {
         this.manhuntMode = snapshot.manhuntMode();
         this.syncedInventory = snapshot.syncedInventory();
         this.worldReset = snapshot.worldReset();
+        this.sharedHealth = snapshot.sharedHealth();
 
         SoulLink.LOGGER.info(
-                "Settings applied: Difficulty={}, HalfHeart={}, SharedPotions={}, SharedJumping={}, Manhunt={}, SyncedInventory={}, WorldReset={}",
+                "Settings applied: Difficulty={}, HalfHeart={}, SharedPotions={}, SharedJumping={}, Manhunt={}, SyncedInventory={}, WorldReset={}, SharedHealth={}",
                 difficulty,
                 halfHeartMode,
                 sharedPotions,
                 sharedJumping,
                 manhuntMode,
                 syncedInventory,
-                worldReset);
+                worldReset,
+                sharedHealth);
     }
 
     /**
@@ -322,5 +348,6 @@ public class Settings {
             boolean sharedJumping,
             boolean manhuntMode,
             boolean syncedInventory,
-            boolean worldReset) {}
+            boolean worldReset,
+            boolean sharedHealth) {}
 }

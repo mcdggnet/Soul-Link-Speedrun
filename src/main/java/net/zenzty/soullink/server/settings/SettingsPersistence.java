@@ -120,6 +120,9 @@ public final class SettingsPersistence {
         if (data.serverMode != null) {
             s.setServerMode(data.serverMode);
         }
+        if (data.sharedHealth != null) {
+            s.setSharedHealth(data.sharedHealth);
+        }
     }
 
     private static SettingsData fromSettings() {
@@ -143,6 +146,7 @@ public final class SettingsPersistence {
         data.syncedInventory = chaos.syncedInventory();
         data.worldReset = chaos.worldReset();
         data.serverMode = s.isServerMode();
+        data.sharedHealth = chaos.sharedHealth();
         return data;
     }
 
@@ -164,5 +168,6 @@ public final class SettingsPersistence {
         Boolean syncedInventory;
         Boolean worldReset;
         Boolean serverMode;
+        Boolean sharedHealth;
     }
 }

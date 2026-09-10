@@ -710,6 +710,15 @@ public class RunManager {
      */
     public void applyServerModeSettings(
             ServerPlayer changedBy, Settings.SettingsSnapshot before, Settings.SettingsSnapshot after) {
+        if (after.sharedHealth() != before.sharedHealth()) {
+            // Pool (re)starts from full; players keep their own bars when it is off.
+            SharedStatsHandler.reset();
+            if (after.sharedHealth()) {
+                for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+                    if (isInRun(player)) SharedStatsHandler.syncPlayerToSharedStats(player);
+                }
+            }
+        }
         if (after.halfHeartMode() != before.halfHeartMode()) {
             SharedStatsHandler.reset();
             for (ServerPlayer player : server.getPlayerList().getPlayers()) {

@@ -58,6 +58,8 @@ public class SharedStatsHandler {
      * @return true if the player should share health, hunger, and related stats
      */
     private static boolean shouldParticipateInSoulLink(ServerPlayer player) {
+        // Deaths-only mode: nobody pools stats, so nothing here applies.
+        if (!Settings.getInstance().isSharedHealth()) return false;
         RunManager runManager;
         try {
             runManager = RunManager.getInstance();
@@ -100,6 +102,7 @@ public class SharedStatsHandler {
      */
     public static void syncPlayerToSharedStats(ServerPlayer player) {
         if (isSyncing) return;
+        if (!Settings.getInstance().isSharedHealth()) return; // everyone keeps their own bars
 
         isSyncing = true;
         try {

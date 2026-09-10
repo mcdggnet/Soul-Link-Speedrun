@@ -141,7 +141,12 @@ public class CommandRegistry {
                                         .append(Component.literal(" | Time: ").withStyle(ChatFormatting.GRAY))
                                         .append(Component.literal(runManager.getFormattedTime())
                                                 .withStyle(ChatFormatting.WHITE)))
-                .append(Component.literal(" | Health: ").withStyle(ChatFormatting.GRAY))
+                .append(
+                        Settings.getInstance().isSharedHealth()
+                                ? Component.empty()
+                                : Component.literal(" | Health: not shared").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(Settings.getInstance().isSharedHealth() ? " | Health: " : " | Pool: ")
+                        .withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(String.format("%.1f", SharedStatsHandler.getSharedHealth()))
                         .withStyle(ChatFormatting.WHITE))
                 .append(Component.literal(" | Hunger: ").withStyle(ChatFormatting.GRAY))

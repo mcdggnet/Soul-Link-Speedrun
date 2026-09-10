@@ -36,10 +36,11 @@ import net.zenzty.soullink.server.run.RunState;
 public class SettingsGui {
 
     // Row 1: run-scoped options
-    private static final int DIFFICULTY_SLOT = 10;
-    private static final int HALF_HEART_SLOT = 12;
-    private static final int SHARED_POTIONS_SLOT = 14;
-    private static final int SHARED_JUMPING_SLOT = 16;
+    private static final int DIFFICULTY_SLOT = 9;
+    private static final int SHARED_HEALTH_SLOT = 11;
+    private static final int HALF_HEART_SLOT = 13;
+    private static final int SHARED_POTIONS_SLOT = 15;
+    private static final int SHARED_JUMPING_SLOT = 17;
     // Row 3: modes
     private static final int MANHUNT_SLOT = 28;
     private static final int SYNCED_INVENTORY_SLOT = 30;
@@ -115,6 +116,7 @@ public class SettingsGui {
         private final boolean originalJoinMessages;
 
         private Difficulty pendingDifficulty;
+        private boolean pendingSharedHealth;
         private boolean pendingHalfHeart;
         private boolean pendingSharedPotions;
         private boolean pendingSharedJumping;
@@ -138,6 +140,7 @@ public class SettingsGui {
             this.originalJoinMessages = settings.isJoinMessagesEnabled();
 
             this.pendingDifficulty = original.difficulty();
+            this.pendingSharedHealth = original.sharedHealth();
             this.pendingHalfHeart = original.halfHeartMode();
             this.pendingSharedPotions = original.sharedPotions();
             this.pendingSharedJumping = original.sharedJumping();
@@ -161,6 +164,7 @@ public class SettingsGui {
             }
 
             setItem(DIFFICULTY_SLOT, createDifficultyItem());
+            setItem(SHARED_HEALTH_SLOT, createSharedHealthItem());
             setItem(HALF_HEART_SLOT, createHalfHeartItem());
             setItem(SHARED_POTIONS_SLOT, createSharedPotionsItem());
             setItem(SHARED_JUMPING_SLOT, createSharedJumpingItem());
@@ -231,6 +235,21 @@ public class SettingsGui {
             lore.add(plain("Click to cycle", ChatFormatting.DARK_GRAY));
             item.set(DataComponents.LORE, new ItemLore(lore));
             return item;
+        }
+
+        private ItemStack createSharedHealthItem() {
+            List<Component> description = pendingSharedHealth
+                    ? describe("One health and hunger bar for everyone.", "Damage to one is damage to all.")
+                    : describe(
+                            "Deaths only: everyone has their own",
+                            "health and hunger, but when anyone",
+                            "dies, everyone dies.");
+            return toggleItem(
+                    new ItemStack(pendingSharedHealth ? Items.REDSTONE : Items.SKELETON_SKULL),
+                    "Shared Health",
+                    ChatFormatting.RED,
+                    pendingSharedHealth,
+                    description);
         }
 
         private ItemStack createHalfHeartItem() {
@@ -408,7 +427,8 @@ public class SettingsGui {
                     pendingSharedJumping,
                     pendingManhunt,
                     pendingSyncedInventory,
-                    pendingWorldReset);
+                    pendingWorldReset,
+                    pendingSharedHealth);
         }
 
         public boolean hasChanges() {
@@ -426,6 +446,10 @@ public class SettingsGui {
                 case NORMAL -> Difficulty.HARD;
                 case HARD -> Difficulty.EASY;
             };
+        }
+
+        public void toggleSharedHealth() {
+            pendingSharedHealth = !pendingSharedHealth;
         }
 
         public void toggleHalfHeart() {
@@ -556,6 +580,7 @@ public class SettingsGui {
         private void handleSettingsClick(int slotIndex) {
             switch (slotIndex) {
                 case DIFFICULTY_SLOT -> settingsInventory.cycleDifficulty();
+                case SHARED_HEALTH_SLOT -> settingsInventory.toggleSharedHealth();
                 case HALF_HEART_SLOT -> settingsInventory.toggleHalfHeart();
                 case SHARED_POTIONS_SLOT -> settingsInventory.toggleSharedPotions();
                 case SHARED_JUMPING_SLOT -> settingsInventory.toggleSharedJumping();
@@ -644,6 +669,9 @@ public class SettingsGui {
                                         "    (takes effect when the world is next generated)",
                                         ChatFormatting.DARK_GRAY)));
                     }
+                }
+                if (after.sharedHealth() != before.sharedHealth()) {
+                    changes.add(changeLine("Shared Health", onOff(before.sharedHealth()), onOff(after.sharedHealth())));
                 }
                 if (after.halfHeartMode() != before.halfHeartMode()) {
                     changes.add(

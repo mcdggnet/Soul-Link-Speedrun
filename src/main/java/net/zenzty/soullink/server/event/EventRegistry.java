@@ -239,7 +239,10 @@ public class EventRegistry {
         player.sendSystemMessage(Component.empty()
                 .append(Component.literal("❤ ").withStyle(ChatFormatting.RED))
                 .append(Component.literal("Soul Link").withStyle(ChatFormatting.WHITE))
-                .append(Component.literal(" - All players share health and hunger.")
+                .append(Component.literal(
+                                Settings.getInstance().isSharedHealth()
+                                        ? " - All players share health and hunger."
+                                        : " - Everyone has their own health; deaths are shared.")
                         .withStyle(ChatFormatting.GRAY)));
 
         // Goal info
@@ -305,7 +308,10 @@ public class EventRegistry {
         player.sendSystemMessage(Component.empty()
                 .append(Component.literal("❤ ").withStyle(ChatFormatting.RED))
                 .append(Component.literal("Soul Link").withStyle(ChatFormatting.WHITE))
-                .append(Component.literal(" - All players share health and hunger.")
+                .append(Component.literal(
+                                Settings.getInstance().isSharedHealth()
+                                        ? " - All players share health and hunger."
+                                        : " - Everyone has their own health; deaths are shared.")
                         .withStyle(ChatFormatting.GRAY)));
         player.sendSystemMessage(Component.empty()
                 .append(Component.literal("☠ ").withStyle(ChatFormatting.DARK_RED))
