@@ -51,15 +51,12 @@ public class WorldService {
                 .setDimensionType(BuiltinDimensionTypes.OVERWORLD)
                 .setDifficulty(serverDifficulty)
                 .setGameRule(GameRules.ADVANCE_TIME, true)
+                .setMirrorOverworldClocks(true)
+                .setMirrorOverworldGameRules(true)
                 .setSeed(backgroundSeed)
                 .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
 
         RuntimeLevelHandle tempOverworld = fantasy.openTemporaryLevel(overworldConfig);
-        ServerLevel tempWorld = tempOverworld.asLevel();
-        ServerClockManager clockManager = tempWorld.getServer().clockManager();
-        Holder<WorldClock> clock =
-                tempWorld.dimensionTypeRegistration().value().defaultClock().orElseThrow();
-        clockManager.setTotalTicks(clock, 0L);
 
         // Nether
         ServerLevel vanillaNether = server.getLevel(Level.NETHER);
@@ -68,6 +65,8 @@ public class WorldService {
             RuntimeLevelConfig netherConfig = new RuntimeLevelConfig()
                     .setDimensionType(BuiltinDimensionTypes.NETHER)
                     .setDifficulty(serverDifficulty)
+                    .setMirrorOverworldClocks(true)
+                    .setMirrorOverworldGameRules(true)
                     .setSeed(backgroundSeed)
                     .setGenerator(vanillaNether.getChunkSource().getGenerator());
             tempNether = fantasy.openTemporaryLevel(netherConfig);
@@ -80,6 +79,8 @@ public class WorldService {
             RuntimeLevelConfig endConfig = new RuntimeLevelConfig()
                     .setDimensionType(BuiltinDimensionTypes.END)
                     .setDifficulty(serverDifficulty)
+                    .setMirrorOverworldClocks(true)
+                    .setMirrorOverworldGameRules(true)
                     .setSeed(backgroundSeed)
                     .setGenerator(vanillaEnd.getChunkSource().getGenerator());
             tempEnd = fantasy.openTemporaryLevel(endConfig);
@@ -103,6 +104,8 @@ public class WorldService {
                 .setDimensionType(BuiltinDimensionTypes.OVERWORLD)
                 .setDifficulty(serverDifficulty)
                 .setGameRule(GameRules.ADVANCE_TIME, true)
+                .setMirrorOverworldClocks(true)
+                .setMirrorOverworldGameRules(true)
                 .setSeed(seed)
                 .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
         RuntimeLevelHandle overworld = fantasy.getOrOpenPersistentLevel(
@@ -114,6 +117,8 @@ public class WorldService {
             RuntimeLevelConfig netherConfig = new RuntimeLevelConfig()
                     .setDimensionType(BuiltinDimensionTypes.NETHER)
                     .setDifficulty(serverDifficulty)
+                    .setMirrorOverworldClocks(true)
+                    .setMirrorOverworldGameRules(true)
                     .setSeed(seed)
                     .setGenerator(vanillaNether.getChunkSource().getGenerator());
             nether = fantasy.getOrOpenPersistentLevel(
@@ -126,6 +131,8 @@ public class WorldService {
             RuntimeLevelConfig endConfig = new RuntimeLevelConfig()
                     .setDimensionType(BuiltinDimensionTypes.END)
                     .setDifficulty(serverDifficulty)
+                    .setMirrorOverworldClocks(true)
+                    .setMirrorOverworldGameRules(true)
                     .setSeed(seed)
                     .setGenerator(vanillaEnd.getChunkSource().getGenerator());
             end = fantasy.getOrOpenPersistentLevel(
@@ -172,6 +179,20 @@ public class WorldService {
         this.netherHandle = run.nether();
         this.endHandle = run.end();
         this.currentSeed = run.seed();
+    }
+
+    /**
+     * Time back to morning for a fresh world. The run worlds mirror the server's clock (so the
+     * clock ticks, and vanilla's sleep skip lands on it), so this is the server clock. Only for a
+     * world that is starting, never for one being reopened: the clock is saved with the level.
+     */
+    public void resetTimeToMorning(ServerLevel overworld) {
+        ServerClockManager clockManager = server.clockManager();
+        Holder<WorldClock> clock =
+                overworld.dimensionTypeRegistration().value().defaultClock().orElse(null);
+        if (clock != null) {
+            clockManager.setTotalTicks(clock, 0L);
+        }
     }
 
     /**

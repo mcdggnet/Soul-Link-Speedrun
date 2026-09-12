@@ -6,7 +6,6 @@ import java.util.Set;
 import java.util.UUID;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Holder;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
@@ -21,8 +20,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
-import net.minecraft.world.clock.ServerClockManager;
-import net.minecraft.world.clock.WorldClock;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
@@ -279,17 +276,6 @@ public class RunManager {
             return;
         }
 
-        ServerLevel tempOverworld = worldService.getOverworld();
-        if (tempOverworld != null) {
-            ServerClockManager clockManager = tempOverworld.getServer().clockManager();
-            Holder<WorldClock> clock = tempOverworld
-                    .dimensionTypeRegistration()
-                    .value()
-                    .defaultClock()
-                    .orElseThrow();
-            clockManager.addTicks(clock, 1);
-        }
-
         // No timer in Server Mode.
         if (!serverMode) {
             timerService.tick(server, this::isInRun, this::shouldSkipTimerActionBarFor);
@@ -310,6 +296,7 @@ public class RunManager {
         if (spawnPos == null) spawnPos = new BlockPos(0, 64, 0);
 
         worldService.resetWeatherForNewRun(overworld);
+        worldService.resetTimeToMorning(overworld);
         teleportService.forceloadSpawnChunks(overworld, spawnPos);
 
         gameState = RunState.RUNNING;
