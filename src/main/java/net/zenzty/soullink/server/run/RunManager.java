@@ -29,6 +29,7 @@ import net.minecraft.world.entity.raid.Raids;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.dimension.end.EnderDragonFight;
+import net.minecraft.world.level.storage.LevelData;
 import net.zenzty.soullink.SoulLink;
 import net.zenzty.soullink.mixin.server.EnderDragonFightAccessor;
 import net.zenzty.soullink.mixin.server.RaidAccessor;
@@ -847,6 +848,18 @@ public class RunManager {
                 .append(Component.literal("/start").withStyle(ChatFormatting.GOLD))
                 .append(Component.literal(" to challenge again.").withStyle(ChatFormatting.GRAY));
         server.getPlayerList().broadcastSystemMessage(restartMessage, false);
+    }
+
+    /**
+     * The spawn a compass should point at in this world: the run overworld's spawn, tagged with that
+     * world's own dimension. Null for any other world, and while the spawn is still being searched.
+     */
+    public LevelData.RespawnData getCompassSpawn(ServerLevel level) {
+        ResourceKey<Level> overworldKey = worldService.getOverworldKey();
+        if (overworldKey == null || !overworldKey.equals(level.dimension()) || !spawnFinder.hasFoundSpawn()) {
+            return null;
+        }
+        return LevelData.RespawnData.of(overworldKey, spawnFinder.getSpawnPos(), 0.0f, 0.0f);
     }
 
     public boolean isPlayerInRun(ServerPlayer player) {
