@@ -524,7 +524,9 @@ public class RunManager {
                 "Server Mode: reopening server world generation {} (seed {})", stored.generation(), stored.seed());
         serverWorld = stored;
         worldService.adoptPooledRun(worldService.buildServerWorlds(stored.generation(), stored.seed()));
-        // The runtime End keeps no fight data across restarts; it is rebuilt on the next visit.
+        // The End's dragon fight is that level's own saved data (data/minecraft/ender_dragon_fight.dat
+        // in its dimension folder), loaded when the level is built: a reopened End keeps a dead
+        // dragon dead. This flag only gates EndPortalMixin's first-visit setup (chunk preload).
         endInitialized = false;
 
         if (stored.spawn() == null) {

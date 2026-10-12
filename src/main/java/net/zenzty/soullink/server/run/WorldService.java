@@ -1,5 +1,6 @@
 package net.zenzty.soullink.server.run;
 
+import java.util.List;
 import java.util.Random;
 import net.minecraft.core.Holder;
 import net.minecraft.resources.Identifier;
@@ -9,10 +10,16 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.clock.ServerClockManager;
 import net.minecraft.world.clock.WorldClock;
+import net.minecraft.world.entity.ai.village.VillageSiege;
+import net.minecraft.world.entity.npc.CatSpawner;
+import net.minecraft.world.entity.npc.wanderingtrader.WanderingTraderSpawner;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 import net.minecraft.world.level.gamerules.GameRules;
+import net.minecraft.world.level.levelgen.PatrolSpawner;
+import net.minecraft.world.level.levelgen.PhantomSpawner;
 import net.zenzty.soullink.SoulLink;
+import net.zenzty.soullink.mixin.server.ServerWorldAccessor;
 import net.zenzty.soullink.server.settings.Settings;
 import xyz.nucleoid.fantasy.Fantasy;
 import xyz.nucleoid.fantasy.RuntimeLevelConfig;
@@ -57,6 +64,7 @@ public class WorldService {
                 .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
 
         RuntimeLevelHandle tempOverworld = fantasy.openTemporaryLevel(overworldConfig);
+        addVanillaOverworldSpawners(tempOverworld.asLevel());
 
         // Nether
         ServerLevel vanillaNether = server.getLevel(Level.NETHER);
@@ -110,6 +118,7 @@ public class WorldService {
                 .setGenerator(vanillaOverworld.getChunkSource().getGenerator());
         RuntimeLevelHandle overworld = fantasy.getOrOpenPersistentLevel(
                 Identifier.fromNamespaceAndPath("soullink", prefix + "overworld"), overworldConfig);
+        addVanillaOverworldSpawners(overworld.asLevel());
 
         RuntimeLevelHandle nether = null;
         ServerLevel vanillaNether = server.getLevel(Level.NETHER);
@@ -140,6 +149,24 @@ public class WorldService {
         }
 
         return new PooledRun(overworld, nether, end, seed, null);
+    }
+
+    /**
+     * Vanilla builds only the main overworld with its custom spawners (phantoms, pillager patrols,
+     * village cats, zombie sieges, wandering traders); Fantasy builds every runtime world with none,
+     * so without this none of those ever spawn in a run. Same set as MinecraftServer.createLevels,
+     * except the wandering trader's timer lives in this world's own data: sharing the server's would
+     * also share the lobby's spawner, and a reset world starts its own timer. The spawner list is not
+     * saved with a world, so a world reopened after a restart gets it here too.
+     */
+    private static void addVanillaOverworldSpawners(ServerLevel overworld) {
+        ((ServerWorldAccessor) overworld)
+                .setCustomSpawners(List.of(
+                        new PhantomSpawner(),
+                        new PatrolSpawner(),
+                        new CatSpawner(),
+                        new VillageSiege(),
+                        new WanderingTraderSpawner(overworld.getDataStorage())));
     }
 
     /**
