@@ -10,12 +10,14 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.zenzty.soullink.server.health.SharedStatsHandler;
 import net.zenzty.soullink.server.manhunt.SpeedrunnerSelectorGui;
+import net.zenzty.soullink.server.run.ClientDimensionNames;
 import net.zenzty.soullink.server.run.RunManager;
 import net.zenzty.soullink.server.settings.Settings;
 import net.zenzty.soullink.server.settings.SettingsGui;
+import net.zenzty.soullink.server.settings.SettingsPersistence;
 
 /**
- * Registers all mod commands: /start, /stoprun, /runinfo, /settings, /reset
+ * Registers all mod commands: /start, /stoprun, /runinfo, /settings, /reset, /clockfix
  */
 public class CommandRegistry {
 
@@ -41,7 +43,31 @@ public class CommandRegistry {
 
             // /reset - Manually reset the current run
             dispatcher.register(Commands.literal("reset").executes(CommandRegistry::handleReset));
+
+            // /clockfix [on|off] - Admin: tell clients vanilla dimension names, so clocks work
+            dispatcher.register(Commands.literal("clockfix")
+                    .requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS))
+                    .executes(context -> handleClockFix(context, null))
+                    .then(Commands.literal("on").executes(context -> handleClockFix(context, true)))
+                    .then(Commands.literal("off").executes(context -> handleClockFix(context, false))));
         });
+    }
+
+    /**
+     * Shows or sets the clock fix (see ClientDimensionNames). A change reaches each player from their
+     * next join or dimension change, and is saved with the settings.
+     */
+    private static int handleClockFix(CommandContext<CommandSourceStack> context, Boolean on) {
+        if (on != null) {
+            ClientDimensionNames.setEnabled(on);
+            SettingsPersistence.save(context.getSource().getServer());
+        }
+        String state = ClientDimensionNames.isEnabled() ? "on" : "off";
+        String message = on == null
+                ? "Clock fix is " + state + "."
+                : "Clock fix " + state + ". Players get it the next time they join or change dimension.";
+        context.getSource().sendSuccess(() -> RunManager.formatMessage(message), on != null);
+        return Command.SINGLE_SUCCESS;
     }
 
     private static int handleStart(CommandContext<CommandSourceStack> context) {

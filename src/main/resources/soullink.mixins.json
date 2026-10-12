@@ -23,6 +23,8 @@
 		"ui.ArmorSlotMixin",
 		"ui.ServerPlayNetworkHandlerSyncMixin",
 		"server.PlayerListMixin",
+		"server.FriendlyByteBufMixin",
+		"server.ResourceKeyMixin",
 		"server.ServerWorldAccessor",
 		"server.EnderDragonFightAccessor",
 		"server.RaidAccessor",

@@ -10,6 +10,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.storage.LevelResource;
 import net.zenzty.soullink.SoulLink;
+import net.zenzty.soullink.server.run.ClientDimensionNames;
 
 /**
  * Handles loading and saving Soul Link settings to a JSON file in the world save directory.
@@ -123,6 +124,9 @@ public final class SettingsPersistence {
         if (data.sharedHealth != null) {
             s.setSharedHealth(data.sharedHealth);
         }
+        if (data.clockFix != null) {
+            ClientDimensionNames.setEnabled(data.clockFix);
+        }
     }
 
     private static SettingsData fromSettings() {
@@ -147,6 +151,7 @@ public final class SettingsPersistence {
         data.worldReset = chaos.worldReset();
         data.serverMode = s.isServerMode();
         data.sharedHealth = chaos.sharedHealth();
+        data.clockFix = ClientDimensionNames.isEnabled();
         return data;
     }
 
@@ -169,5 +174,7 @@ public final class SettingsPersistence {
         Boolean worldReset;
         Boolean serverMode;
         Boolean sharedHealth;
+        // Absent (files from older builds) = on, the default.
+        Boolean clockFix;
     }
 }
