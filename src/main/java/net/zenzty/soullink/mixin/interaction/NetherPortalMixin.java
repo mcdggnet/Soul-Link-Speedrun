@@ -68,6 +68,9 @@ public abstract class NetherPortalMixin {
         }
 
         if (destinationWorld == null) {
+            // A portal in the run End, or the other world is gone: go nowhere. Falling through to
+            // vanilla would send the entity to minecraft:the_nether, outside the run.
+            cir.setReturnValue(null);
             return;
         }
 
