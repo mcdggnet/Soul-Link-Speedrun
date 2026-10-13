@@ -13,6 +13,7 @@
 		"item.ItemStackMixin",
 		"interaction.NetherPortalMixin",
 		"interaction.EndPortalMixin",
+		"interaction.EndGatewayMixin",
 		"interaction.FlintAndSteelMixin",
 		"interaction.FireChargeItemMixin",
 		"interaction.FireBlockMixin",
