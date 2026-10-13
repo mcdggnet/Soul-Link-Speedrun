@@ -1,6 +1,7 @@
 package net.zenzty.soullink.mixin.player;
 
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
@@ -13,6 +14,7 @@ import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Mixin for LivingEntity to intercept healing and armor equip for ServerPlayerEntity.
@@ -69,6 +71,18 @@ public abstract class LivingEntityMixin {
         } else {
             // Larger heals (potions, golden apples) sync normally
             SharedStatsHandler.onPlayerHealed(player, player.getHealth());
+        }
+    }
+
+    /**
+     * A totem is used up in place (the stack in hand shrinks; no slot is set), so nothing synced it
+     * and everyone else kept their copy - the next inventory sync handed it back. Sync from the
+     * player it saved.
+     */
+    @Inject(method = "checkTotemDeathProtection", at = @At("RETURN"))
+    private void onTotemUsed(DamageSource source, CallbackInfoReturnable<Boolean> cir) {
+        if (cir.getReturnValueZ() && (Object) this instanceof ServerPlayer player) {
+            SharedInventoryHandler.syncFromPlayerToAll(player);
         }
     }
 

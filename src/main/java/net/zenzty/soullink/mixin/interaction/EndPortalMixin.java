@@ -82,13 +82,32 @@ public abstract class EndPortalMixin {
                 SoulLink.LOGGER.info("Redirecting End portal: temp overworld -> temp end at {}", spawnPos);
             }
         } else if (isInTempEnd) {
-            // Coming FROM the End (exit portal after dragon)
+            // Coming FROM the End (exit portal after dragon). As in vanilla: a player goes to their
+            // bed or charged anchor if it is in this run, everything else to the run's spawn.
             destinationWorld = runManager.getTemporaryOverworld();
             if (destinationWorld != null) {
-                // Return to overworld - find a safe spawn location near origin
-                BlockPos safeSpawn = findSafeSpawn(destinationWorld, 0, 0);
-                spawnPos = new Vec3(safeSpawn.getX() + 0.5, safeSpawn.getY() + 1.0, safeSpawn.getZ() + 0.5);
-                SoulLink.LOGGER.info("Redirecting End exit portal: temp end -> temp overworld at {}", spawnPos);
+                BlockPos runSpawn = runManager.getSpawnPos();
+                if (runSpawn != null) {
+                    spawnPos = Vec3.atBottomCenterOf(runSpawn);
+                } else {
+                    BlockPos safeSpawn = findSafeSpawn(destinationWorld, 0, 0);
+                    spawnPos = new Vec3(safeSpawn.getX() + 0.5, safeSpawn.getY() + 1.0, safeSpawn.getZ() + 0.5);
+                }
+
+                // Vanilla's own lookup; with no spawn block it answers with the server's spawn
+                // (the lobby), which isRunWorld turns down.
+                if (entity instanceof ServerPlayer player) {
+                    TeleportTransition home =
+                            player.findRespawnPositionAndUseSpawnBlock(false, TeleportTransition.DO_NOTHING);
+                    if (runManager.isRunWorld(home.newLevel().dimension())) {
+                        destinationWorld = home.newLevel();
+                        spawnPos = home.position();
+                    }
+                }
+                SoulLink.LOGGER.info(
+                        "Redirecting End exit portal: temp end -> {} at {}",
+                        destinationWorld.dimension().identifier(),
+                        spawnPos);
             }
         }
 

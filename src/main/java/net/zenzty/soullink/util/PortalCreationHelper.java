@@ -6,6 +6,7 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.NetherPortalBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.dimension.BuiltinDimensionTypes;
 
 /**
  * Utility class for creating nether portals in temporary dimensions. Shared logic for flint and
@@ -22,6 +23,13 @@ public class PortalCreationHelper {
      * @return true if a portal was successfully created
      */
     public static boolean tryCreatePortal(ServerLevel world, BlockPos startPos) {
+        // As in vanilla, portals only light in an Overworld or a Nether. One in the run End had
+        // nowhere to go, so vanilla sent it to minecraft:the_nether, outside the run.
+        var type = world.dimensionTypeRegistration();
+        if (!type.is(BuiltinDimensionTypes.OVERWORLD) && !type.is(BuiltinDimensionTypes.NETHER)) {
+            return false;
+        }
+
         // Try X axis first, then Z axis
         if (createPortalWithAxis(world, startPos, Direction.Axis.X)) {
             return true;
